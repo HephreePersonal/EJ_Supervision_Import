@@ -26,6 +26,7 @@
     <Compile Include="01_JusticeDB_Import.py" />
     <Compile Include="02_OperationsDB_Import.py" />
     <Compile Include="03_FinancialDB_Import.py" />
+    <Compile Include="04_LOBColumns.py" />
     <Compile Include="config\settings.py" />
     <Compile Include="config\__init__.py" />
     <Compile Include="db\health.py" />
@@ -38,6 +39,7 @@
     <Compile Include="etl\runner.py" />
     <Compile Include="etl\__init__.py" />
     <Compile Include="hooks\hook-pyodbc.py" />
+    <Compile Include="run_etl.py" />
     <Compile Include="sql_scripts\financial\__init__.py" />
     <Compile Include="sql_scripts\justice\__init__.py" />
     <Compile Include="sql_scripts\lob\__init__.py" />
@@ -84,6 +86,8 @@
     <Content Include="code_review\01_plan.txt" />
     <Content Include="code_review\03_completed.txt" />
     <Content Include="config\values.json" />
+    <Content Include="LICENSE.txt" />
+    <Content Include="README.md" />
     <Content Include="sql_scripts\financial\create_primarykeys_financial.sql" />
     <Content Include="sql_scripts\financial\gather_drops_and_selects_financial.sql" />
     <Content Include="sql_scripts\financial\gather_feeinstanceids.sql" />
