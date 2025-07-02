@@ -21,19 +21,64 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="config\settings.py" />
+    <Compile Include="config\__init__.py" />
     <Compile Include="db\health.py" />
     <Compile Include="db\migrations.py" />
     <Compile Include="db\mssql.py" />
     <Compile Include="db\mysql.py" />
     <Compile Include="db\__init__.py" />
     <Compile Include="EJ_Supervision_Import.py" />
+    <Compile Include="etl\base_importer.py" />
+    <Compile Include="etl\core.py" />
+    <Compile Include="etl\runner.py" />
+    <Compile Include="etl\__init__.py" />
+    <Compile Include="hooks\hook-pyodbc.py" />
+    <Compile Include="sql_scripts\financial\__init__.py" />
+    <Compile Include="sql_scripts\justice\__init__.py" />
+    <Compile Include="sql_scripts\lob\__init__.py" />
+    <Compile Include="sql_scripts\misc\__init__.py" />
+    <Compile Include="sql_scripts\operations\__init__.py" />
+    <Compile Include="sql_scripts\__init__.py" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="db\" />
     <Folder Include="config\" />
+    <Folder Include="etl\" />
+    <Folder Include="hooks\" />
+    <Folder Include="sql_scripts\" />
+    <Folder Include="sql_scripts\financial\" />
+    <Folder Include="sql_scripts\justice\" />
+    <Folder Include="sql_scripts\justice\__pycache__\" />
+    <Folder Include="sql_scripts\lob\" />
+    <Folder Include="sql_scripts\misc\" />
+    <Folder Include="sql_scripts\operations\" />
+    <Folder Include="sql_scripts\operations\__pycache__\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".env" />
+    <Content Include="config\values.json" />
+    <Content Include="sql_scripts\financial\create_primarykeys_financial.sql" />
+    <Content Include="sql_scripts\financial\gather_drops_and_selects_financial.sql" />
+    <Content Include="sql_scripts\financial\gather_feeinstanceids.sql" />
+    <Content Include="sql_scripts\financial\update_joins_financial.sql" />
+    <Content Include="sql_scripts\justice\create_primarykeys.sql" />
+    <Content Include="sql_scripts\justice\gather_caseids.sql" />
+    <Content Include="sql_scripts\justice\gather_chargeids.sql" />
+    <Content Include="sql_scripts\justice\gather_drops_and_selects.sql" />
+    <Content Include="sql_scripts\justice\gather_eventids.sql" />
+    <Content Include="sql_scripts\justice\gather_hearingids.sql" />
+    <Content Include="sql_scripts\justice\gather_partyids.sql" />
+    <Content Include="sql_scripts\justice\gather_warrantids.sql" />
+    <Content Include="sql_scripts\justice\update_joins.sql" />
+    <Content Include="sql_scripts\justice\__pycache__\__init__.cpython-39.pyc" />
+    <Content Include="sql_scripts\lob\gather_lobs.sql" />
+    <Content Include="sql_scripts\misc\gather_lobs.sql" />
+    <Content Include="sql_scripts\operations\create_primarykeys_operations.sql" />
+    <Content Include="sql_scripts\operations\gather_documentids.sql" />
+    <Content Include="sql_scripts\operations\gather_drops_and_selects_operations.sql" />
+    <Content Include="sql_scripts\operations\update_joins_operations.sql" />
+    <Content Include="sql_scripts\operations\__pycache__\__init__.cpython-39.pyc" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
