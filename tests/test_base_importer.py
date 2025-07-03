@@ -179,7 +179,8 @@ def test_process_table_row_validation(tmp_path, monkeypatch):
         'fConvert': 1,
     }
 
-    assert importer._process_table_operation_row(conn, row, 1, importer.config['log_file']) is True
+    result = importer._process_table_operation_row(conn, row, 1, importer.config['log_file'])
+    assert result is True
     assert conn.execute('SELECT COUNT(*) FROM dest').fetchone()[0] == 2
     assert conn.execute("SELECT ScopeRowCount FROM 'main.dbo.TablesToConvert_base' WHERE RowID=1").fetchone()[0] == 2
 
@@ -202,3 +203,37 @@ def test_should_process_table_overrides():
 
     assert importer._should_process_table(0, 's', 't') is True
     assert importer._should_process_table(0, 'x', 'y') is False
+
+
+def test_drop_empty_tables(tmp_path, monkeypatch):
+    importer = BaseDBImporter()
+    importer.config = {
+        'sql_timeout': 100,
+        'include_empty_tables': False,
+        'log_file': str(tmp_path / 'err.log'),
+        'always_include_tables': [],
+    }
+    importer.db_name = 'main'
+
+    import sqlite3
+
+    conn = sqlite3.connect(':memory:')
+    conn.execute('CREATE TABLE dest(id INTEGER)')
+    conn.execute("CREATE TABLE 'main.dbo.TablesToConvert_base'(RowID INTEGER PRIMARY KEY, SchemaName TEXT, TableName TEXT, fConvert INTEGER, ScopeRowCount INTEGER)")
+    conn.execute("INSERT INTO 'main.dbo.TablesToConvert_base' VALUES (1, 'main', 'dest', 1, 0)")
+
+    def fake_exec(c, sql, params=None, timeout=100):
+        sql = sql.replace('ISNULL', 'IFNULL')
+        sql = sql.replace("main.dbo.TablesToConvert_base", "'main.dbo.TablesToConvert_base'")
+        if params:
+            return c.execute(sql, params)
+        return c.execute(sql)
+
+    monkeypatch.setattr('utils.etl_helpers.execute_sql_with_timeout', fake_exec)
+    monkeypatch.setattr('etl.base_importer.execute_sql_with_timeout', fake_exec)
+    monkeypatch.setattr('etl.base_importer.sanitize_sql', fake_exec)
+
+    importer.drop_empty_tables(conn)
+
+    remaining = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dest'").fetchall()
+    assert remaining == []
