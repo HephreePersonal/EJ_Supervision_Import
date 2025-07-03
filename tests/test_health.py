@@ -4,7 +4,17 @@ import types, sys
 if "sqlalchemy" not in sys.modules:
     sa_mod = types.ModuleType("sqlalchemy")
     sa_mod.create_engine = lambda *a, **k: None
+    sa_mod.MetaData = lambda *a, **k: None
+    pool_mod = types.ModuleType("pool")
+    pool_mod.NullPool = object
+    sa_mod.pool = pool_mod
+    engine_mod = types.ModuleType("engine")
+    engine_mod.Engine = object
+    engine_mod.Connection = object
+    sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
+    sys.modules["sqlalchemy.pool"] = pool_mod
+    sys.modules["sqlalchemy.engine"] = engine_mod
 if "pydantic" not in sys.modules:
     pd_mod = types.ModuleType("pydantic")
     class _SecretStr(str):
@@ -16,6 +26,9 @@ if "pydantic" not in sys.modules:
     pd_mod.Field = lambda *a, **k: None
     pd_mod.validator = lambda *a, **k: (lambda f: f)
     sys.modules["pydantic"] = pd_mod
+    ps_mod = types.ModuleType("pydantic_settings")
+    ps_mod.BaseSettings = object
+    sys.modules["pydantic_settings"] = ps_mod
 if "dotenv" not in sys.modules:
     mod = types.ModuleType("dotenv")
     mod.load_dotenv = lambda *a, **k: None

@@ -16,6 +16,20 @@ if "dotenv" not in sys.modules:
     mod.load_dotenv = lambda *a, **k: None
     sys.modules["dotenv"] = mod
 
+if "sqlalchemy" not in sys.modules:
+    sa_mod = types.ModuleType("sqlalchemy")
+    sa_mod.MetaData = lambda *a, **k: None
+    pool_mod = types.ModuleType("pool")
+    pool_mod.NullPool = object
+    sa_mod.pool = pool_mod
+    engine_mod = types.ModuleType("engine")
+    engine_mod.Engine = object
+    engine_mod.Connection = object
+    sa_mod.engine = engine_mod
+    sys.modules["sqlalchemy"] = sa_mod
+    sys.modules["sqlalchemy.pool"] = pool_mod
+    sys.modules["sqlalchemy.engine"] = engine_mod
+
 if "pydantic" not in sys.modules:
     pd_mod = types.ModuleType("pydantic")
     class _BaseSettings:
@@ -35,6 +49,9 @@ if "pydantic" not in sys.modules:
         return dec
     pd_mod.validator = _validator
     sys.modules["pydantic"] = pd_mod
+    ps_mod = types.ModuleType("pydantic_settings")
+    ps_mod.BaseSettings = _BaseSettings
+    sys.modules["pydantic_settings"] = ps_mod
 
 from etl.core import sanitize_sql
 

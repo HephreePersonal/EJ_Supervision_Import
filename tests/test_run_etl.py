@@ -38,8 +38,14 @@ if "sqlalchemy" not in sys.modules:
     sa_mod = types.ModuleType("sqlalchemy")
     types_mod = types.SimpleNamespace(Text=lambda *a, **k: None)
     sa_mod.types = types_mod
+    sa_mod.MetaData = lambda *a, **k: None
+    engine_mod = types.ModuleType("engine")
+    engine_mod.Engine = object
+    engine_mod.Connection = object
+    sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.types"] = types_mod
+    sys.modules["sqlalchemy.engine"] = engine_mod
 
 if "dotenv" not in sys.modules:
     mod = types.ModuleType("dotenv")
@@ -65,6 +71,9 @@ if "pydantic" not in sys.modules:
         return dec
     pd_mod.validator = _validator
     sys.modules["pydantic"] = pd_mod
+    ps_mod = types.ModuleType("pydantic_settings")
+    ps_mod.BaseSettings = _BaseSettings
+    sys.modules["pydantic_settings"] = ps_mod
 
 if "tqdm" not in sys.modules:
     dummy = types.ModuleType("tqdm")
