@@ -390,6 +390,7 @@ class BaseDBImporter:
         drop_sql = row_dict.get("Drop_IfExists", "")
         select_into_sql = row_dict.get("Select_Into", "")
         fconvert = row_dict.get("fConvert")
+        row_id = row_dict.get("RowID")
 
         table_name = validate_sql_identifier(row_dict.get("TableName"))
         schema_name = validate_sql_identifier(row_dict.get("SchemaName"))
@@ -478,13 +479,6 @@ class BaseDBImporter:
             except Exception as ex:
                 logger.warning(f"Error processing SELECT statement for {full_table_name}: {ex}")
 
-        # Rest of the method remains the same
-        if not self._should_process_table(scope_row_count, schema_name, table_name):
-            logger.info(
-                f"Skipping Select INTO for {full_table_name}: scope_row_count is {scope_row_count}"
-            )
-            return True
-
         if not drop_sql.strip():
             return True
 
@@ -507,6 +501,29 @@ class BaseDBImporter:
                     select_into_sql,
                     timeout=self.config["sql_timeout"],
                 )
+
+                # Determine inserted row count and update metadata table
+                count_cur = execute_sql_with_timeout(
+                    conn,
+                    f"SELECT COUNT(*) FROM {full_table_name}",
+                    timeout=self.config["sql_timeout"],
+                )
+                inserted_count = count_cur.fetchone()[0]
+
+                tables_table = (
+                    f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
+                )
+                tables_table = validate_sql_identifier(tables_table)
+                update_sql = (
+                    f"UPDATE {db_name}.dbo.{tables_table} SET ScopeRowCount = ? WHERE RowID = ?"
+                )
+                sanitize_sql(
+                    conn,
+                    update_sql,
+                    params=(inserted_count, row_id),
+                    timeout=self.config["sql_timeout"],
+                )
+                scope_row_count = inserted_count
 
             conn.commit()
             self._validate_table_copy(

@@ -12,8 +12,18 @@ if "pandas" not in sys.modules:
 if "sqlalchemy" not in sys.modules:
     sa_mod = types.ModuleType("sqlalchemy")
     sa_mod.types = types.SimpleNamespace(Text=lambda *a, **k: None)
+    sa_mod.MetaData = lambda *a, **k: None
+    pool_mod = types.ModuleType("pool")
+    pool_mod.NullPool = object
+    sa_mod.pool = pool_mod
+    engine_mod = types.ModuleType("engine")
+    engine_mod.Engine = object
+    engine_mod.Connection = object
+    sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.types"] = sa_mod.types
+    sys.modules["sqlalchemy.pool"] = pool_mod
+    sys.modules["sqlalchemy.engine"] = engine_mod
 if "tqdm" not in sys.modules:
     dummy = types.ModuleType("tqdm")
     dummy.tqdm = lambda it, **kw: it
@@ -50,6 +60,9 @@ if "pydantic" not in sys.modules:
         return dec
     pd_mod.validator = _validator
     sys.modules["pydantic"] = pd_mod
+    ps_mod = types.ModuleType("pydantic_settings")
+    ps_mod.BaseSettings = _BaseSettings
+    sys.modules["pydantic_settings"] = ps_mod
 
 from etl.base_importer import BaseDBImporter
 import db.mssql as mssql

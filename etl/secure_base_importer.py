@@ -491,6 +491,7 @@ class SecureBaseDBImporter:
             # Validate SQL statements
             drop_sql = operation.get("Drop_IfExists", "")
             select_sql = operation.get("Select_Into", "")
+            row_id = operation.get("RowID")
             
             if drop_sql:
                 drop_validation = self.sql_validator.validate_sql_statement(drop_sql, allow_ddl=True)
@@ -510,11 +511,7 @@ class SecureBaseDBImporter:
                         security_violation=True
                     )
             
-            # Check if table should be processed
             scope_row_count = operation.get("ScopeRowCount", 0)
-            if not self._should_process_table_secure(scope_row_count, schema_name, table_name):
-                logger.debug(f"Skipping table {schema_name}.{table_name} (scope: {scope_row_count})")
-                return True
             
             # Execute operations safely
             if drop_sql:
@@ -528,7 +525,28 @@ class SecureBaseDBImporter:
                     None,
                     lambda: conn.execute(sqlalchemy.text(select_sql))
                 )
-            
+
+                # Determine inserted row count and update metadata table
+                count_res = await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: conn.execute(
+                        sqlalchemy.text(f"SELECT COUNT(*) FROM {schema_name}.{table_name}")
+                    )
+                )
+                inserted_count = count_res.fetchone()[0]
+
+                tables_table = (
+                    f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
+                )
+                update_sql = (
+                    f"UPDATE {self.settings.mssql_target_db_name}.dbo.{tables_table} SET ScopeRowCount = :cnt WHERE RowID = :rid"
+                )
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: conn.execute(sqlalchemy.text(update_sql), {"cnt": inserted_count, "rid": row_id})
+                )
+                scope_row_count = inserted_count
+
             # Commit the transaction
             await asyncio.get_event_loop().run_in_executor(
                 None,
