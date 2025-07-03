@@ -255,6 +255,79 @@ class BaseDBImporter:
 
         logger.info(f"Table operations completed: {successful_tables} successful, {failed_tables} failed")
 
+    def drop_empty_tables(self, conn: Any) -> None:
+        """Drop any tables that ended up with zero rows."""
+        log_file = self.config['log_file']
+        tables_table = (
+            f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != 'Justice' else 'TablesToConvert'
+        )
+        tables_table = validate_sql_identifier(tables_table)
+
+        if not self.db_name:
+            logger.warning("Database name not available; skipping drop_empty_tables")
+            return
+
+        db_name = validate_sql_identifier(self.db_name)
+
+        query = (
+            f"SELECT SchemaName, TableName FROM {db_name}.dbo.{tables_table} "
+            "WHERE fConvert=1 AND ISNULL(ScopeRowCount,0)=0"
+        )
+
+        try:
+            cursor = execute_sql_with_timeout(
+                conn, query, timeout=self.config["sql_timeout"]
+            )
+        except Exception as e:  # pragma: no cover - depends on DB
+            logger.warning(f"Could not fetch empty tables: {e}")
+            return
+
+        try:
+            if hasattr(cursor, "mappings"):
+                rows = list(cursor.mappings())
+            elif hasattr(cursor, "keys") and callable(cursor.keys):
+                columns = cursor.keys()
+                rows = [dict(zip(columns, r)) for r in cursor.fetchall()]
+            elif hasattr(cursor, "description"):
+                columns = [d[0] for d in cursor.description]
+                rows = [dict(zip(columns, r)) for r in cursor.fetchall()]
+            else:
+                rows = [
+                    {f"col{i}": val for i, val in enumerate(r)}
+                    for r in cursor.fetchall()
+                ]
+        except Exception as e:  # pragma: no cover - edge case
+            logger.error(f"Failed processing empty table query: {e}")
+            return
+
+        overrides = {
+            t.strip().lower() for t in self.config.get("always_include_tables", [])
+        }
+
+        with transaction_scope(conn):
+            for row in rows:
+                schema_name = validate_sql_identifier(row.get("SchemaName") or row.get("schemaname"))
+                table_name = validate_sql_identifier(row.get("TableName") or row.get("tablename"))
+                patterns = [
+                    f"{schema_name}.{table_name}".lower(),
+                    f"{self.db_name}.{schema_name}.{table_name}".lower(),
+                    f"{self.DB_TYPE.lower()}.{schema_name}.{table_name}".lower(),
+                ]
+
+                if any(p in overrides for p in patterns):
+                    continue
+
+                drop_sql = f"DROP TABLE IF EXISTS {schema_name}.{table_name}"
+                try:
+                    sanitize_sql(
+                        conn,
+                        drop_sql,
+                        timeout=self.config["sql_timeout"],
+                    )
+                except Exception as e:
+                    logger.error(f"Error dropping table {schema_name}.{table_name}: {e}")
+                    log_exception_to_file(str(e), log_file)
+
     def _fetch_table_operation_rows(self, conn: Any, db_name: str, table_name: str) -> list[dict[str, Any]]:
         """Retrieve rows describing table operations to perform."""
         query = f"""
@@ -758,7 +831,10 @@ class BaseDBImporter:
                 
                 # Execute table operations
                 self.execute_table_operations(target_conn)
-                
+
+                # Drop any empty tables that were created
+                self.drop_empty_tables(target_conn)
+
                 # Create primary keys and constraints
                 self.create_primary_keys(target_conn)
                 

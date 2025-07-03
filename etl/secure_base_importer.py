@@ -174,7 +174,8 @@ class SecureBaseDBImporter:
                 await self._import_joins_secure(conn, context)
                 await self._update_joins_secure(conn, context)
                 await self._execute_table_operations_secure(conn, context)
-                
+                await self.drop_empty_tables_secure(conn, context)
+
                 if not args.skip_pk_creation:
                     await self._create_primary_keys_secure(conn, context)
             
@@ -472,9 +473,9 @@ class SecureBaseDBImporter:
             )
     
     async def _process_table_operation_secure(
-        self, 
-        conn: Any, 
-        operation: Dict[str, Any], 
+        self,
+        conn: Any,
+        operation: Dict[str, Any],
         context: ProcessingContext
     ) -> bool:
         """Process individual table operation with security validation."""
@@ -571,6 +572,66 @@ class SecureBaseDBImporter:
                     context,
                     original_error=e
                 )
+
+    async def drop_empty_tables_secure(self, conn: Any, context: ProcessingContext) -> None:
+        """Drop tables with zero rows after processing."""
+        context.operation_name = "drop_empty_tables"
+        tables_table = (
+            f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
+        )
+
+        if not self.settings.mssql_target_db_name:
+            logger.warning("Database name not available; skipping drop_empty_tables")
+            return
+
+        query = (
+            f"SELECT SchemaName, TableName FROM {self.settings.mssql_target_db_name}.dbo.{tables_table} "
+            "WHERE fConvert=1 AND ISNULL(ScopeRowCount,0)=0"
+        )
+
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: list(conn.execute(sqlalchemy.text(query)).fetchall())
+            )
+        except Exception as e:  # pragma: no cover - depends on DB
+            logger.warning(f"Could not fetch empty tables: {e}")
+            return
+
+        always_include = [t.lower() for t in self.settings.always_include_tables]
+
+        for row in result:
+            if hasattr(row, "_mapping"):
+                mapping = row._mapping
+                schema_name = mapping.get("SchemaName") or mapping.get("schemaname")
+                table_name = mapping.get("TableName") or mapping.get("tablename")
+            elif isinstance(row, dict):
+                schema_name = row.get("SchemaName") or row.get("schemaname")
+                table_name = row.get("TableName") or row.get("tablename")
+            else:
+                schema_name, table_name = row[0], row[1]
+
+            schema_name = validate_sql_identifier(schema_name)
+            table_name = validate_sql_identifier(table_name)
+
+            patterns = [
+                f"{schema_name}.{table_name}".lower(),
+                f"{self.settings.mssql_target_db_name}.{schema_name}.{table_name}".lower(),
+                f"{self.DB_TYPE.lower()}.{schema_name}.{table_name}".lower(),
+            ]
+
+            if any(p in always_include for p in patterns):
+                continue
+
+            drop_sql = f"DROP TABLE IF EXISTS {schema_name}.{table_name}"
+            try:
+                await asyncio.get_event_loop().run_in_executor(
+                    None,
+                    lambda: conn.execute(sqlalchemy.text(drop_sql))
+                )
+                await asyncio.get_event_loop().run_in_executor(None, conn.commit)
+            except Exception as e:  # pragma: no cover - depends on DB
+                logger.error(f"Error dropping table {schema_name}.{table_name}: {e}")
     
     def _should_process_table_secure(self, scope_row_count: Any, schema_name: str, table_name: str) -> bool:
         """Determine if table should be processed with security considerations."""
