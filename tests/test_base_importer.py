@@ -145,7 +145,6 @@ def test_process_table_row_validation(tmp_path, monkeypatch):
     importer.config = {
         'sql_timeout': 100,
         'include_empty_tables': True,
-        'fail_on_mismatch': True,
         'log_file': str(tmp_path / 'err.log'),
     }
     importer.db_name = 'main'
