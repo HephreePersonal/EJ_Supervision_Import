@@ -6,6 +6,7 @@
 	UPDATE {{DB_NAME}}.dbo.TableUsedSelects_Operations SET Freq=LTRIM(RTRIM(REPLACE(REPLACE(Freq,',',''),'nan',0)));
 	UPDATE {{DB_NAME}}.dbo.TableUsedSelects_Operations SET InScopeFreq=LTRIM(RTRIM(REPLACE(REPLACE(InScopeFreq,',',''),'nan',0)));
 	UPDATE {{DB_NAME}}.dbo.TableUsedSelects_Operations SET fConvert=LTRIM(RTRIM(REPLACE(REPLACE(fConvert,'.0',''),'nan',0)));
+	UPDATE {{DB_NAME}}.dbo.TableUsedSelects_Operations SET FCONVERT=CASE WHEN FCONVERT='1.0' THEN 1 ELSE 0 END
 
 	ALTER TABLE {{DB_NAME}}.dbo.TableUsedSelects_Operations ALTER COLUMN Freq INT NOT NULL;
 	ALTER TABLE {{DB_NAME}}.dbo.TableUsedSelects_Operations ALTER COLUMN InScopeFreq INT NOT NULL;

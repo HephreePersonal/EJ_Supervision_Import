@@ -1,6 +1,12 @@
 {
   "always_include_tables": [
-    "s.t"
+    "Justice.dbo.xPartyGrpParty",
+    "Justice.dbo.xPartyGrpCase",
+    "Justice.dbo.SupClinicalScreening",
+    "Justice.dbo.SupPartyReferral",
+    "Justice.dbo.SupervisionRec",
+    "Financial.dbo.FeeInst",
+    "Operations.dbo.Doc"
   ],
   "password": "",
   "driver": "val",
