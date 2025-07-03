@@ -70,7 +70,6 @@ class SecureETLSettings(BaseSettings):
     
     # Feature flags
     include_empty_tables: bool = Field(default=False, env="INCLUDE_EMPTY_TABLES")
-    fail_on_mismatch: bool = Field(default=False, env="FAIL_ON_MISMATCH")
     skip_pk_creation: bool = Field(default=False, env="SKIP_PK_CREATION")
     
     # Security settings

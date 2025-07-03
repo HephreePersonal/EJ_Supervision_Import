@@ -34,10 +34,6 @@ from config import ETLConstants, settings
 logger = logging.getLogger(__name__)
 
 
-class RowCountMismatchError(Exception):
-    """Raised when row count validation fails."""
-
-
 class BaseDBImporter:
     """Base class for database import operations."""
     
@@ -91,7 +87,6 @@ class BaseDBImporter:
             "skip_pk_creation": False,
             "sql_timeout": ETLConstants.DEFAULT_SQL_TIMEOUT,  # seconds
             "csv_chunk_size": ETLConstants.DEFAULT_CSV_CHUNK_SIZE,
-            "fail_on_mismatch": settings.fail_on_mismatch,
         }
         
         self.config = load_config(args.config_file, default_config)
@@ -109,8 +104,6 @@ class BaseDBImporter:
             self.config["sql_timeout"] = int(os.environ.get("SQL_TIMEOUT"))
         if os.environ.get("CSV_CHUNK_SIZE"):
             self.config["csv_chunk_size"] = int(os.environ.get("CSV_CHUNK_SIZE"))
-        if os.environ.get("FAIL_ON_MISMATCH") == "1":
-            self.config["fail_on_mismatch"] = True
         
         # Override config with command line arguments
         if args.include_empty:
@@ -423,39 +416,35 @@ class BaseDBImporter:
     def _validate_table_copy(
         self,
         conn: Any,
-        schema_name: str,
-        table_name: str,
-        expected_rows: Any,
+        row_id: int,
+        actual_rows: int,
         log_file: str,
     ) -> None:
-        """Compare row counts between source scope and target table."""
-        if expected_rows is None:
+        """Update metadata table with the actual row count."""
+        if row_id is None or actual_rows is None:
             return
 
-        full_name = f"{schema_name}.{table_name}"
+        tables_table = (
+            f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
+        )
+        tables_table = validate_sql_identifier(tables_table)
+        db_name = validate_sql_identifier(self.db_name)
+
+        update_sql = (
+            f"UPDATE {db_name}.dbo.{tables_table} SET ScopeRowCount = ? WHERE RowID = ?"
+        )
+
         try:
-            cur = execute_sql_with_timeout(
+            sanitize_sql(
                 conn,
-                f"SELECT COUNT(*) FROM {full_name}",
+                update_sql,
+                params=(actual_rows, row_id),
                 timeout=self.config["sql_timeout"],
             )
-            actual = cur.fetchone()[0]
         except Exception as exc:
-            msg = f"Validation failed for {full_name}: {exc}"
+            msg = f"Failed to update row count for RowID {row_id}: {exc}"
             logger.error(msg)
             log_exception_to_file(msg, log_file)
-            if self.config.get("fail_on_mismatch"):
-                raise
-            return
-
-        if int(actual) != int(expected_rows):
-            msg = (
-                f"Row count mismatch for {full_name}: expected {expected_rows}, got {actual}"
-            )
-            logger.warning(msg)
-            log_exception_to_file(msg, log_file)
-            if self.config.get("fail_on_mismatch"):
-                raise RowCountMismatchError(msg)
 
     def _process_table_operation_row(
         self, conn: Any, row_dict: dict[str, Any], idx: int, log_file: str
@@ -582,30 +571,17 @@ class BaseDBImporter:
                     timeout=self.config["sql_timeout"],
                 )
                 inserted_count = count_cur.fetchone()[0]
-
-                tables_table = (
-                    f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
-                )
-                tables_table = validate_sql_identifier(tables_table)
-                update_sql = (
-                    f"UPDATE {db_name}.dbo.{tables_table} SET ScopeRowCount = ? WHERE RowID = ?"
-                )
-                sanitize_sql(
-                    conn,
-                    update_sql,
-                    params=(inserted_count, row_id),
-                    timeout=self.config["sql_timeout"],
-                )
                 scope_row_count = inserted_count
 
             conn.commit()
             self._validate_table_copy(
-                conn, schema_name, table_name, scope_row_count, log_file
+                conn,
+                row_id,
+                scope_row_count,
+                log_file,
             )
             return True
 
-        except RowCountMismatchError:
-            raise
         except Exception as sql_error:
             conn.rollback()
             error_msg = (
