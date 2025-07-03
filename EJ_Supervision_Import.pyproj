@@ -24,9 +24,13 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="01_JusticeDB_Import.py" />
+    <Compile Include="01_JusticeDB_Import_Secure.py" />
     <Compile Include="02_OperationsDB_Import.py" />
+    <Compile Include="02_OperationsDB_Import_Secure.py" />
     <Compile Include="03_FinancialDB_Import.py" />
+    <Compile Include="03_FinancialDB_Import_Secure.py" />
     <Compile Include="04_LOBColumns.py" />
+    <Compile Include="config\secure_settings.py" />
     <Compile Include="config\settings.py" />
     <Compile Include="config\__init__.py" />
     <Compile Include="db\health.py" />
@@ -37,8 +41,10 @@
     <Compile Include="etl\base_importer.py" />
     <Compile Include="etl\core.py" />
     <Compile Include="etl\runner.py" />
+    <Compile Include="etl\secure_base_importer.py" />
     <Compile Include="etl\__init__.py" />
     <Compile Include="hooks\hook-pyodbc.py" />
+    <Compile Include="migrate_to_secure_system.py" />
     <Compile Include="run_etl.py" />
     <Compile Include="sql_scripts\financial\__init__.py" />
     <Compile Include="sql_scripts\justice\__init__.py" />
@@ -60,6 +66,7 @@
     <Compile Include="tests\__init__.py" />
     <Compile Include="utils\etl_helpers.py" />
     <Compile Include="utils\logging_helper.py" />
+    <Compile Include="utils\sql_security.py" />
     <Compile Include="utils\__init__.py" />
   </ItemGroup>
   <ItemGroup>
@@ -85,9 +92,11 @@
     <Content Include="code_review\00_suggestions.txt" />
     <Content Include="code_review\01_plan.txt" />
     <Content Include="code_review\03_completed.txt" />
+    <Content Include="config\secure_config.json" />
     <Content Include="config\values.json" />
     <Content Include="LICENSE.txt" />
     <Content Include="README.md" />
+    <Content Include="README_SECURE_IMPLEMENTATION.md" />
     <Content Include="sql_scripts\financial\create_primarykeys_financial.sql" />
     <Content Include="sql_scripts\financial\gather_drops_and_selects_financial.sql" />
     <Content Include="sql_scripts\financial\gather_feeinstanceids.sql" />
