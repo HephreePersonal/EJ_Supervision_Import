@@ -392,6 +392,12 @@ class SecureBaseDBImporter:
                         logger.warning(f"Invalid table name in CSV row {idx}: {table_name} - {e}")
                         chunk.loc[idx, 'TableName'] = None
         
+        if 'fConvert' in chunk.columns:
+            # Convert any variant of 1 to '1' string
+            chunk['fConvert'] = chunk['fConvert'].replace(['1', '1.0', 'true', 'True', 'TRUE', 'yes'], '1')
+            # Everything else to '0'
+            chunk['fConvert'] = chunk['fConvert'].apply(lambda x: '1' if x == '1' else '0')
+        
         return chunk
     
     async def _insert_chunk_secure(self, conn: Any, chunk_data: List[Dict[str, Any]], context: ProcessingContext) -> None:
