@@ -97,6 +97,7 @@
     <Content Include="LICENSE.txt" />
     <Content Include="README.md" />
     <Content Include="README_SECURE_IMPLEMENTATION.md" />
+    <Content Include="requirements.txt" />
     <Content Include="sql_scripts\financial\create_primarykeys_financial.sql" />
     <Content Include="sql_scripts\financial\gather_drops_and_selects_financial.sql" />
     <Content Include="sql_scripts\financial\gather_feeinstanceids.sql" />
