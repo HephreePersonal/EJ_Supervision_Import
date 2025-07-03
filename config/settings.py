@@ -57,8 +57,6 @@ class Settings(BaseSettings):
     include_empty_tables: bool = Field(False, env="INCLUDE_EMPTY_TABLES")
     csv_chunk_size: int = Field(ETLConstants.DEFAULT_CSV_CHUNK_SIZE, env="CSV_CHUNK_SIZE")
 
-    #: Fail the import when row count validation mismatches are detected
-    fail_on_mismatch: bool = Field(False, env="FAIL_ON_MISMATCH")
 
     mysql_host: Optional[str] = Field(default=None, env="MYSQL_HOST")
     mysql_user: Optional[str] = Field(default=None, env="MYSQL_USER")

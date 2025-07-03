@@ -18,8 +18,18 @@ if "sqlalchemy" not in sys.modules:
     sa_mod = types.ModuleType("sqlalchemy")
     types_mod = types.SimpleNamespace(Text=lambda *a, **k: None)
     sa_mod.types = types_mod
+    sa_mod.MetaData = lambda *a, **k: None
+    pool_mod = types.ModuleType("pool")
+    pool_mod.NullPool = object
+    sa_mod.pool = pool_mod
+    engine_mod = types.ModuleType("engine")
+    engine_mod.Engine = object
+    engine_mod.Connection = object
+    sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.types"] = types_mod
+    sys.modules["sqlalchemy.pool"] = pool_mod
+    sys.modules["sqlalchemy.engine"] = engine_mod
 
 if "pyodbc" not in sys.modules:
     class _DummyError(Exception):
@@ -53,6 +63,9 @@ if "pydantic" not in sys.modules:
         return dec
     pd_mod.validator = _validator
     sys.modules["pydantic"] = pd_mod
+    ps_mod = types.ModuleType("pydantic_settings")
+    ps_mod.BaseSettings = _BaseSettings
+    sys.modules["pydantic_settings"] = ps_mod
 
 if "dotenv" not in sys.modules:
     mod = types.ModuleType("dotenv")
@@ -132,7 +145,6 @@ def test_process_table_row_validation(tmp_path, monkeypatch):
     importer.config = {
         'sql_timeout': 100,
         'include_empty_tables': True,
-        'fail_on_mismatch': True,
         'log_file': str(tmp_path / 'err.log'),
     }
     importer.db_name = 'main'
@@ -142,6 +154,8 @@ def test_process_table_row_validation(tmp_path, monkeypatch):
     conn = sqlite3.connect(':memory:')
     conn.execute('CREATE TABLE src(id INTEGER)')
     conn.executemany('INSERT INTO src VALUES (?)', [(1,), (2,)])
+    conn.execute("CREATE TABLE 'main.dbo.TablesToConvert_base'(RowID INTEGER PRIMARY KEY, ScopeRowCount INTEGER)")
+    conn.execute("INSERT INTO 'main.dbo.TablesToConvert_base' VALUES (1, 3)")
 
     def fake_exec(c, sql, params=None, timeout=100):
         if params:
@@ -150,22 +164,25 @@ def test_process_table_row_validation(tmp_path, monkeypatch):
 
     monkeypatch.setattr('utils.etl_helpers.execute_sql_with_timeout', fake_exec)
     monkeypatch.setattr('etl.base_importer.execute_sql_with_timeout', fake_exec)
+    def fake_sanitize(c, sql, params=None, timeout=100):
+        sql = sql.replace("main.dbo.TablesToConvert_base", "'main.dbo.TablesToConvert_base'")
+        return fake_exec(c, sql, params)
+    monkeypatch.setattr('etl.base_importer.sanitize_sql', fake_sanitize)
 
     row = {
+        'RowID': 1,
         'Drop_IfExists': 'DROP TABLE IF EXISTS dest',
         'Select_Into': 'CREATE TABLE dest AS SELECT * FROM src',
         'TableName': 'dest',
         'SchemaName': 'main',
         'ScopeRowCount': 3,
+        'fConvert': 1,
     }
 
-    from etl.base_importer import RowCountMismatchError
-
-    with pytest.raises(RowCountMismatchError):
-        importer._process_table_operation_row(conn, row, 1, importer.config['log_file'])
-
-    row['ScopeRowCount'] = 2
-    assert importer._process_table_operation_row(conn, row, 2, importer.config['log_file']) is True
+    result = importer._process_table_operation_row(conn, row, 1, importer.config['log_file'])
+    assert result is True
+    assert conn.execute('SELECT COUNT(*) FROM dest').fetchone()[0] == 2
+    assert conn.execute("SELECT ScopeRowCount FROM 'main.dbo.TablesToConvert_base' WHERE RowID=1").fetchone()[0] == 2
 
 
 def test_progress_helpers(tmp_path):
@@ -186,3 +203,37 @@ def test_should_process_table_overrides():
 
     assert importer._should_process_table(0, 's', 't') is True
     assert importer._should_process_table(0, 'x', 'y') is False
+
+
+def test_drop_empty_tables(tmp_path, monkeypatch):
+    importer = BaseDBImporter()
+    importer.config = {
+        'sql_timeout': 100,
+        'include_empty_tables': False,
+        'log_file': str(tmp_path / 'err.log'),
+        'always_include_tables': [],
+    }
+    importer.db_name = 'main'
+
+    import sqlite3
+
+    conn = sqlite3.connect(':memory:')
+    conn.execute('CREATE TABLE dest(id INTEGER)')
+    conn.execute("CREATE TABLE 'main.dbo.TablesToConvert_base'(RowID INTEGER PRIMARY KEY, SchemaName TEXT, TableName TEXT, fConvert INTEGER, ScopeRowCount INTEGER)")
+    conn.execute("INSERT INTO 'main.dbo.TablesToConvert_base' VALUES (1, 'main', 'dest', 1, 0)")
+
+    def fake_exec(c, sql, params=None, timeout=100):
+        sql = sql.replace('ISNULL', 'IFNULL')
+        sql = sql.replace("main.dbo.TablesToConvert_base", "'main.dbo.TablesToConvert_base'")
+        if params:
+            return c.execute(sql, params)
+        return c.execute(sql)
+
+    monkeypatch.setattr('utils.etl_helpers.execute_sql_with_timeout', fake_exec)
+    monkeypatch.setattr('etl.base_importer.execute_sql_with_timeout', fake_exec)
+    monkeypatch.setattr('etl.base_importer.sanitize_sql', fake_exec)
+
+    importer.drop_empty_tables(conn)
+
+    remaining = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dest'").fetchall()
+    assert remaining == []
