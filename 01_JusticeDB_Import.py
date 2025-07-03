@@ -91,7 +91,6 @@ class JusticeDBImporter(BaseDBImporter):
             help="Enable verbose logging."
         )
         return parser.parse_args()
-        
     def execute_preprocessing(self, conn: Any) -> None:
         """Define supervision scope for Justice DB."""
         logger.info("Defining supervision scope...")
@@ -110,20 +109,17 @@ class JusticeDBImporter(BaseDBImporter):
                 # Remove the conn.commit() call - transaction_scope will handle the commit
         
         logger.info("All Staging steps completed successfully. Supervision Scope Defined.")
-    
     def prepare_drop_and_select(self, conn: Any) -> None:
         """Prepare SQL statements for dropping and selecting data."""
         logger.info("Gathering list of Justice tables with SQL Commands to be migrated.")
         additional_sql = load_sql('justice/gather_drops_and_selects.sql', self.db_name)
         run_sql_script(conn, 'gather_drops_and_selects', additional_sql, timeout=self.config['sql_timeout'])
-    
     def update_joins_in_tables(self, conn: Any) -> None:
         """Update the TablesToConvert table with JOINs."""
         logger.info("Updating JOINS in TablesToConvert List")
         update_joins_sql = load_sql('justice/update_joins.sql', self.db_name)
         run_sql_script(conn, 'update_joins', update_joins_sql, timeout=self.config['sql_timeout'])
         logger.info("Updating JOINS for Justice tables is complete.")
-
        
     def get_next_step_name(self) -> str:
         """Return the name of the next step in the ETL process."""

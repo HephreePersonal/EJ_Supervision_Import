@@ -393,19 +393,13 @@ class BaseDBImporter:
 
         table_name = validate_sql_identifier(row_dict.get("TableName"))
         schema_name = validate_sql_identifier(row_dict.get("SchemaName"))
+        db_name = validate_sql_identifier(self.db_name)  # Ensure we have the database name
         scope_row_count = row_dict.get("ScopeRowCount")
+
+        # Create both versions of the table name - with and without database prefix
         full_table_name = f"{schema_name}.{table_name}"
-        
-        # Check if this is a table we want to debug
-        target_tables = ["xPartyGrpParty", "xPartyGrpCase", "Bond", "AddChrgCompInst"]
-        debug_table = table_name in target_tables
-        
-        if debug_table:
-            logger.info(f"*** TARGET TABLE FOUND: {full_table_name} ***")
-            logger.info(f"    Original ScopeRowCount: {scope_row_count}")
-            logger.info(f"    fConvert: {fconvert}")
-            logger.info(f"    Select into SQL: {select_into_sql[:100]}...")
-        
+        fully_qualified_name = f"{db_name}.{full_table_name}"
+
         # Only check row count if fConvert is 1
         if fconvert == 1 and select_into_sql:
             try:
@@ -439,10 +433,10 @@ class BaseDBImporter:
                                 # Extract first column for COUNT(DISTINCT )
                                 first_column = columns_part[:from_pos].split(",")[0].strip()
                                 from_clause = columns_part[from_pos:].strip()
-                                count_sql = f"SELECT COUNT(DISTINCT {first_column}) FROM {from_clause}"
+                                count_sql = f"SELECT COUNT(DISTINCT {first_column}) {from_clause}"
                             else:
-                                # Fallback if we can't parse properly
-                                count_sql = f"SELECT COUNT(*) FROM {full_table_name}"
+                                # Skip count if we can't parse properly
+                                logger.debug(f"Skipping count validation for {full_table_name} (can't parse DISTINCT query)")
                         else:
                             # For non-DISTINCT queries
                             if select_part.upper().startswith("SELECT"):
@@ -454,49 +448,33 @@ class BaseDBImporter:
                                     from_clause = select_clause[from_pos:].strip()
                                     count_sql = f"SELECT COUNT(*) {from_clause}"
                                 else:
-                                    count_sql = f"SELECT COUNT(*) FROM {full_table_name}"
+                                    # Skip count if we can't parse FROM clause
+                                    logger.debug(f"Skipping count validation for {full_table_name} (can't parse FROM clause)")
                             else:
-                                # Fallback for unparseable queries
-                                count_sql = f"SELECT COUNT(*) FROM {full_table_name}"
+                                # Skip for unparseable queries
+                                logger.debug(f"Skipping count validation for {full_table_name} (unparseable query)")
                         
-                        if debug_table:
-                            logger.info(f"    Executing count query: {count_sql}")
+                        # Execute the count query if we were able to build one
+                        if count_sql:
+                            try:
+                                logger.debug(f"Executing count validation: {count_sql}")
+                                count_result = execute_sql_with_timeout(
+                                    conn, count_sql, timeout=self.config["sql_timeout"]
+                                )
+                                actual_count = count_result.fetchone()[0]
+                                
+                                # Use the actual count instead of the static ScopeRowCount
+                                scope_row_count = actual_count
+                                logger.debug(f"Validated row count for {full_table_name}: {actual_count}")
+                            except Exception as count_error:
+                                logger.warning(
+                                    f"Count query failed for {full_table_name}, using original ScopeRowCount ({scope_row_count}): {count_error}"
+                                )
                         
-                        # Execute the count query
-                        try:
-                            count_result = execute_sql_with_timeout(
-                                conn, count_sql, timeout=self.config["sql_timeout"]
-                            )
-                            actual_count = count_result.fetchone()[0]
-                            
-                            if debug_table:
-                                logger.info(f"    Actual row count from query: {actual_count}")
-                            
-                            # Use the actual count instead of the static ScopeRowCount
-                            scope_row_count = actual_count
-                        except Exception as count_error:
-                            if debug_table:
-                                logger.warning(f"    Count query failed: {count_error}")
-                            logger.warning(f"Using original ScopeRowCount ({scope_row_count}) for {full_table_name}")
-                    
                 else:
-                    # Simple fallback for tables without proper SELECT INTO
-                    count_sql = f"SELECT COUNT(*) FROM {full_table_name}"
-                    
-                    if debug_table:
-                        logger.info(f"    Using simple count query: {count_sql}")
-                    
-                    try:
-                        count_result = execute_sql_with_timeout(
-                            conn, count_sql, timeout=self.config["sql_timeout"]
-                        )
-                        actual_count = count_result.fetchone()[0]
-                        scope_row_count = actual_count
-                        
-                        if debug_table:
-                            logger.info(f"    Simple count result: {actual_count}")
-                    except Exception as e:
-                        logger.warning(f"Simple count query failed for {full_table_name}: {e}")
+                    # We don't attempt to count rows directly from the table as it may not exist yet
+                    logger.debug(f"Skipping row count validation for {full_table_name} (no SELECT INTO pattern found)")
+
             except Exception as ex:
                 logger.warning(f"Error processing SELECT statement for {full_table_name}: {ex}")
 
