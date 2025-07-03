@@ -28,7 +28,7 @@ UNION
 			INNER JOIN {{DB_NAME}}.dbo.ClkCaseHdr C ON A.ParentID=C.CaseID
 	WHERE
 		B.[Description]='Case'
-UNION/*
+UNION
 	SELECT
 		 A.DocumentID
 		,B.ParentTypeID
@@ -40,7 +40,7 @@ UNION/*
 			INNER JOIN {{DB_NAME}}.dbo.SupClinicalScreening C ON A.ParentID=C.ClinicalScreeningID
 	WHERE
 		B.[Description]='Clinical Screening'
-UNION*/
+UNION
 	SELECT
 		 A.DocumentID
 		,B.ParentTypeID
@@ -148,7 +148,7 @@ UNION
 			INNER JOIN {{DB_NAME}}.dbo.SupPartyPSI C WITH (NOLOCK) ON A.ParentID=C.PSIID
 	WHERE
 		B.[Description]='PSI'
-UNION/*
+UNION
 	SELECT
 		 A.DocumentID
 		,B.ParentTypeID
@@ -160,7 +160,7 @@ UNION/*
 			INNER JOIN {{DB_NAME}}.dbo.SupPartyReferral C WITH (NOLOCK) ON A.ParentID=C.ReferralPartyID
 	WHERE
 		B.[Description]='Referral'
-UNION*/
+UNION
 	SELECT
 		 A.DocumentID
 		,B.ParentTypeID
@@ -184,7 +184,7 @@ UNION
 			INNER JOIN {{DB_NAME}}.dbo.SentenceEvent C WITH (NOLOCK) ON A.ParentID=C.SentenceEventID
 	WHERE
 		B.[Description]='Sentence Event'
-UNION/*
+UNION
 	-- REVIEW REVIEW REVIEDW
 	SELECT
 		 A.DocumentID
@@ -197,7 +197,7 @@ UNION/*
 			INNER JOIN {{DB_NAME}}.dbo.SupervisionRec C WITH (NOLOCK) ON A.ParentID=C.SupervisionRecordID
 	WHERE
 		B.[Description]='Supervision'
-UNION*/
+UNION
 	SELECT
 		 A.DocumentID
 		,B.ParentTypeID

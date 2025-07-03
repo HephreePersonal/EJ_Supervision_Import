@@ -565,9 +565,10 @@ class BaseDBImporter:
                 )
 
                 # Determine inserted row count and update metadata table
+                # FIXED: Use the fully qualified name instead of just schema.table
                 count_cur = execute_sql_with_timeout(
                     conn,
-                    f"SELECT COUNT(*) FROM {full_table_name}",
+                    f"SELECT COUNT(*) FROM {fully_qualified_name}",
                     timeout=self.config["sql_timeout"],
                 )
                 inserted_count = count_cur.fetchone()[0]
