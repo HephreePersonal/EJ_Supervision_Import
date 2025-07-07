@@ -528,16 +528,29 @@ class SecureBaseDBImporter:
                 )
             
             if select_sql:
+                # Get the JOIN criteria and append to SELECT INTO statement
+                join_sql = operation.get("Joins", "")
+                full_sql = f"{select_sql} {join_sql}"
+    
+                # Execute the complete SQL with joins
                 await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: conn.execute(sqlalchemy.text(select_sql))
+                    lambda: conn.execute(sqlalchemy.text(full_sql))
                 )
 
                 # Determine inserted row count and update metadata table
+                actual_table_name = table_name
+                # Apply prefix for Operations and Financial tables (they always use schema 'dbo')
+                if self.DB_TYPE == "Operations":
+                    actual_table_name = f"Operations_{table_name}"
+                elif self.DB_TYPE == "Financial":
+                    actual_table_name = f"Financial_{table_name}"
+                # Justice tables don't have prefixes but may have non-dbo schemas
+
                 count_res = await asyncio.get_event_loop().run_in_executor(
-                    None,
+                    None, 
                     lambda: conn.execute(
-                        sqlalchemy.text(f"SELECT COUNT(*) FROM {schema_name}.{table_name}")
+                        sqlalchemy.text(f"SELECT COUNT(*) FROM {self.settings.mssql_target_db_name}.{schema_name}.{actual_table_name}")
                     )
                 )
                 inserted_count = count_res.fetchone()[0]
@@ -545,12 +558,17 @@ class SecureBaseDBImporter:
                 tables_table = (
                     f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
                 )
-                update_sql = (
-                    f"UPDATE {self.settings.mssql_target_db_name}.dbo.{tables_table} SET ScopeRowCount = :cnt WHERE RowID = :rid"
+                
+                # CRITICAL FIX: Use direct SQL with string formatting for this specific update
+                # This avoids parameter binding issues with pyodbc
+                update_sql = sqlalchemy.text(
+                    f"UPDATE {self.settings.mssql_target_db_name}.dbo.{tables_table} "
+                    f"SET ScopeRowCount = {inserted_count} WHERE RowID = {row_id}"
                 )
+                
                 await asyncio.get_event_loop().run_in_executor(
                     None,
-                    lambda: conn.execute(sqlalchemy.text(update_sql), {"cnt": inserted_count, "rid": row_id})
+                    lambda: conn.execute(update_sql)
                 )
                 scope_row_count = inserted_count
 

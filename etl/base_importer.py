@@ -430,15 +430,17 @@ class BaseDBImporter:
         tables_table = validate_sql_identifier(tables_table)
         db_name = validate_sql_identifier(self.db_name)
 
+        # Use named parameters with ? placeholders
         update_sql = (
             f"UPDATE {db_name}.dbo.{tables_table} SET ScopeRowCount = ? WHERE RowID = ?"
         )
 
         try:
+            # Fix: Pass params as a list containing a tuple
             sanitize_sql(
                 conn,
                 update_sql,
-                params=(actual_rows, row_id),
+                params=[(actual_rows, row_id)],
                 timeout=self.config["sql_timeout"],
             )
         except Exception as exc:
@@ -566,9 +568,22 @@ class BaseDBImporter:
 
                 # Determine inserted row count and update metadata table
                 # FIXED: Use the fully qualified name instead of just schema.table
+                fully_qualified_name = f"{db_name}.{full_table_name}"
+
+                # Add this block to handle prefixed table names
+                if self.DB_TYPE == "Operations":
+                    actual_table_name = f"Operations_{table_name}"
+                    fully_qualified_table_name = f"{db_name}.{schema_name}.{actual_table_name}"
+                elif self.DB_TYPE == "Financial":
+                    actual_table_name = f"Financial_{table_name}"
+                    fully_qualified_table_name = f"{db_name}.{schema_name}.{actual_table_name}"
+                else:
+                    # For Justice DB, use the original table name
+                    fully_qualified_table_name = fully_qualified_name
+
                 count_cur = execute_sql_with_timeout(
                     conn,
-                    f"SELECT COUNT(*) FROM {fully_qualified_name}",
+                    f"SELECT COUNT(*) FROM {fully_qualified_table_name}",
                     timeout=self.config["sql_timeout"],
                 )
                 inserted_count = count_cur.fetchone()[0]

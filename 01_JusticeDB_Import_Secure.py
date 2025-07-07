@@ -3,7 +3,8 @@
 import logging
 import asyncio
 from typing import Any, Dict, List
-
+import tkinter as tk
+from tkinter import messagebox
 from etl.secure_base_importer import SecureBaseDBImporter, ProcessingContext, SecureETLException
 from utils.etl_helpers import load_sql, run_sql_script
 from utils.sql_security import validate_sql_statement, SQLRiskLevel
@@ -266,7 +267,7 @@ class SecureJusticeDBImporter(SecureBaseDBImporter):
         query_result = self.sql_builder.build_select_statement(
             columns=[
                 "RowID", "DatabaseName", "SchemaName", "TableName", 
-                "fConvert", "ScopeRowCount", "Drop_IfExists", "Select_Into"
+                "fConvert", "ScopeRowCount", "Drop_IfExists", "Select_Into", "Joins"
             ],
             from_table=table_name,
             schema="dbo",
@@ -294,7 +295,16 @@ class SecureJusticeDBImporter(SecureBaseDBImporter):
             
             operations = [dict(zip(columns, row)) for row in rows]
             
-            logger.debug(f"Fetched {len(operations)} table operations")
+            # Add debug logging for Bond table
+            table_names = [f"{op.get('SchemaName', '')}.{op.get('TableName', '')}" for op in operations]
+            logger.info(f"Tables to process: {', '.join(table_names)}")
+            
+            bond_tables = [name for name in table_names if name.lower().endswith('.bond')]
+            if bond_tables:
+                logger.info(f"Bond tables found: {', '.join(bond_tables)}")
+            else:
+                logger.warning("No Bond tables found in operations list!")
+            
             return operations
             
         except Exception as e:
@@ -431,6 +441,78 @@ class SecureJusticeDBImporter(SecureBaseDBImporter):
                     context,
                     original_error=e
                 )
+
+    async def _process_table_operation_secure(
+        self,
+        conn: Any,
+        operation: Dict[str, Any],
+        context: ProcessingContext
+    ) -> bool:
+        """Process table operation with security validation and debugging for Bond table."""
+        
+        table_name = operation.get("TableName", "")
+        schema_name = operation.get("SchemaName", "")
+        
+        # Log every table being processed
+        logger.debug(f"Processing table: {schema_name}.{table_name}")
+        
+        # Debug breakpoint for Bond table
+        if table_name and table_name.lower() == "bond":
+            logger.info(f"BOND TABLE DETECTED: {schema_name}.{table_name}")
+            
+            # Collect SQL information
+            drop_sql = operation.get("Drop_IfExists", "")
+            select_sql = operation.get("Select_Into", "")
+            
+            # Get join information - use the column name that matches your DB schema
+            join_sql = operation.get("Joins", "")
+            if not join_sql:
+                try:
+                    # Query for join information
+                    join_query = f"""
+                        SELECT Joins 
+                        FROM {self.settings.mssql_target_db_name}.dbo.TablesToConvert 
+                        WHERE SchemaName = '{schema_name}' AND TableName = '{table_name}'
+                    """
+                    result = await asyncio.get_event_loop().run_in_executor(
+                        None, lambda: conn.execute(sqlalchemy.text(join_query))
+                    )
+                    join_data = result.fetchone()
+                    join_sql = join_data[0] if join_data else "N/A"
+                except Exception as e:
+                    logger.warning(f"Failed to fetch join info for Bond table: {e}")
+                    join_sql = "Error fetching join information"
+            
+            full_sql = f"{select_sql} {join_sql}"
+            
+            # Show debug message box
+            try:
+                root = tk.Tk()
+                root.withdraw()
+                debug_info = (
+                    f"BOND TABLE PROCESSING BREAKPOINT\n\n"
+                    f"Schema: {schema_name}\n"
+                    f"Table: {table_name}\n\n"
+                    f"DROP SQL:\n{drop_sql}\n\n"
+                    f"SELECT INTO SQL:\n{select_sql}\n\n" 
+                    f"JOIN SQL:\n{join_sql}\n\n"
+                    f"COMBINED SQL:\n{full_sql}"
+                )
+                proceed = messagebox.askokcancel(
+                    "Bond Table Debug", 
+                    debug_info,
+                    width=1000
+                )
+                root.destroy()
+                
+                if not proceed:
+                    logger.warning("User aborted processing at Bond table")
+                    return False
+            except Exception as e:
+                logger.error(f"Error showing Bond table debug dialog: {e}")
+        
+        # Call the parent implementation
+        return await super()._process_table_operation_secure(conn, operation, context)
 
 
 def main():
