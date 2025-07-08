@@ -1,4 +1,9 @@
-"""Simplified secure Operations database import."""
+"""Simplified secure Operations database import.
+
+Uses ``SecureBaseDBImporter`` for hardened execution. Refer to
+``README_SECURE_IMPLEMENTATION.md`` for usage guidance and security
+considerations.
+"""
 
 import logging
 from typing import Any
@@ -16,6 +21,7 @@ class SecureOperationsDBImporter(SecureBaseDBImporter):
     DEFAULT_CSV_FILE = "EJ_Operations_Selects_ALL.csv"
 
     def execute_preprocessing(self, conn: Any) -> None:
+        """Execute scripts to collect Operations DB scope information."""
         logger.info("Defining document conversion scope for Operations DB")
         steps = [("GatherDocumentIDs", "operations/gather_documentids.sql")]
         with transaction_scope(conn):
@@ -24,6 +30,7 @@ class SecureOperationsDBImporter(SecureBaseDBImporter):
         logger.info("Operations preprocessing complete")
 
     def prepare_drop_and_select(self, conn: Any) -> None:
+        """Generate DROP and SELECT statements for Operations tables."""
         logger.info("Gathering list of Operations tables")
         self.run_sql_file(
             conn,
@@ -32,15 +39,18 @@ class SecureOperationsDBImporter(SecureBaseDBImporter):
         )
 
     def update_joins_in_tables(self, conn: Any) -> None:
+        """Insert JOIN statements into the tracking table."""
         logger.info("Updating JOINS in TablesToConvert")
         self.run_sql_file(conn, "update_joins", "operations/update_joins_operations.sql")
         logger.info("Updating JOINS for Operations tables is complete")
 
     def get_next_step_name(self) -> str:
+        """Return the next importer to run after this one."""
         return "Financial migration"
 
 
 def main() -> None:
+    """Entry point for running the secure Operations importer from the CLI."""
     setup_logging()
     importer = SecureOperationsDBImporter()
     importer.run()

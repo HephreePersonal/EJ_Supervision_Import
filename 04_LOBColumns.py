@@ -1,9 +1,9 @@
 """Optimize LOB columns for migration by determining appropriate sizes.
 
 This script analyzes large object columns in the target database and writes
-ALTER statements to resize them as needed.  It relies on configuration from
-``MSSQL_TARGET_CONN_STR`` and accepts command line options for logging and
-batch size.
+``ALTER`` statements to resize them as needed. Configuration is read from
+``MSSQL_TARGET_CONN_STR`` and command line arguments. For context on how this
+fits into the overall migration see ``README.md`` under ``ETL Process Flow``.
 """
 
 from __future__ import annotations
@@ -47,7 +47,10 @@ conn_val = settings.mssql_target_conn_str.get_secret_value() if settings.mssql_t
 DB_NAME = settings.mssql_target_db_name or parse_database_name(conn_val)
 
 def parse_args() -> argparse.Namespace:
-    """Parse command line arguments for the LOB Column processing script."""
+    """Parse command line arguments for the LOB Column processing script.
+
+    Refer to ``README.md`` for an overview of expected options and defaults.
+    """
     parser = argparse.ArgumentParser(description="LOB Column Processing")
     parser.add_argument(
         "--log-file",

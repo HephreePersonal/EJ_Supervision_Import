@@ -1,4 +1,9 @@
-"""Simplified secure Justice database import."""
+"""Simplified secure Justice database import.
+
+This version uses the hardened ``SecureBaseDBImporter`` and is intended for
+production use. See ``README_SECURE_IMPLEMENTATION.md`` for migration steps and
+additional security notes.
+"""
 
 import logging
 from typing import Any
@@ -17,6 +22,7 @@ class SecureJusticeDBImporter(SecureBaseDBImporter):
     DEFAULT_CSV_FILE = "EJ_Justice_Selects_ALL.csv"
 
     def execute_preprocessing(self, conn: Any) -> None:
+        """Run SQL scripts that define the Justice supervision scope."""
         logger.info("Defining supervision scope for Justice DB")
         steps = [
             ("GatherCaseIDs", "justice/gather_caseids.sql"),
@@ -32,19 +38,23 @@ class SecureJusticeDBImporter(SecureBaseDBImporter):
         logger.info("Justice preprocessing complete")
 
     def prepare_drop_and_select(self, conn: Any) -> None:
+        """Generate DROP and SELECT statements for the Justice tables."""
         logger.info("Gathering list of Justice tables")
         self.run_sql_file(conn, "gather_drops_and_selects", "justice/gather_drops_and_selects.sql")
 
     def update_joins_in_tables(self, conn: Any) -> None:
+        """Insert JOIN statements into the tracking table."""
         logger.info("Updating JOINS in TablesToConvert")
         self.run_sql_file(conn, "update_joins", "justice/update_joins.sql")
         logger.info("Updating JOINS for Justice tables is complete")
 
     def get_next_step_name(self) -> str:
+        """Return the next importer to run after this one."""
         return "Operations migration"
 
 
 def main() -> None:
+    """Entry point for running the secure Justice importer from the CLI."""
     setup_logging()
     importer = SecureJusticeDBImporter()
     importer.run()
