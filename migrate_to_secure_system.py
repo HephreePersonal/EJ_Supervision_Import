@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Migration script to upgrade existing ETL system to secure version.
 
 This script helps migrate from the original ETL system to the enhanced secure version
