@@ -121,7 +121,7 @@ python 01_JusticeDB_Import_Secure.py
 ej-supervision-import/
 ├── config/                 # Configuration files
 │   ├── settings.py        # Application settings
-│   ├── secure_settings.py # Secure configuration manager
+│   ├── secure_config.json # Stored non-sensitive defaults
 │   └── values.json        # Legacy configuration
 ├── db/                    # Database connectivity
 │   ├── mssql.py          # SQL Server connections
