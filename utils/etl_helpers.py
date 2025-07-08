@@ -51,8 +51,9 @@ def transaction_scope(conn: Any) -> Generator[Any, None, None]:
     setting is restored afterwards.
     """
 
-    original_autocommit = getattr(conn, "autocommit", False)
-    conn.autocommit = False
+    original_autocommit = getattr(conn, "autocommit", None)
+    if original_autocommit is not None:
+        conn.autocommit = False
     try:
         yield conn
         conn.commit()
@@ -60,7 +61,8 @@ def transaction_scope(conn: Any) -> Generator[Any, None, None]:
         conn.rollback()
         raise
     finally:
-        conn.autocommit = original_autocommit
+        if original_autocommit is not None:
+            conn.autocommit = original_autocommit
 
 
 def load_sql(filename: str, db_name: Optional[str] = None) -> str:
