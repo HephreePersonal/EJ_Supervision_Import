@@ -213,20 +213,29 @@ def gather_lob_columns(
         cursor = execute_sql_with_timeout(
             conn, query, timeout=config["sql_timeout"]
         )
-        
-        # Handle different cursor types
+
+        # Handle different cursor types and row fetching styles
         try:
             # Try SQLAlchemy style
             columns = cursor.keys()
-            rows = cursor.fetchall()
         except AttributeError:
             # Try PyODBC style
             columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            
+
         batch_size = config.get(
             "batch_size", ETLConstants.DEFAULT_BULK_INSERT_BATCH_SIZE
         )
+
+        rows: list[Any] = []
+        if hasattr(cursor, "fetchall"):
+            rows = cursor.fetchall()
+        elif hasattr(cursor, "fetchmany"):
+            while True:
+                chunk = cursor.fetchmany(batch_size)
+                if not chunk:
+                    break
+                rows.extend(chunk)
+
         processed = 0
         progress = tqdm(total=len(rows), desc="Analyzing LOB Columns", unit="column")
         
@@ -237,6 +246,7 @@ def gather_lob_columns(
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
         
+        cur = conn.cursor()
         for row in rows:
             row_dict = dict(zip(columns, row))
             schema_name = row_dict.get("SchemaName")
@@ -274,21 +284,20 @@ def gather_lob_columns(
 
                 # FIX: Create separate direct SQL INSERT statement for this parameter style
                 try:
-                    direct_sql = f"""
-                        INSERT INTO {DB_NAME}.dbo.LOB_COLUMN_UPDATES
-                        (SchemaName, TableName, ColumnName, DataType, CurrentLength, RowCnt, MaxLen, AlterStatement)
-                        VALUES 
-                        ('{schema_name}', '{table_name}', '{column_name}', '{datatype}', 
-                        {row_dict.get("CurrentLength") if row_dict.get("CurrentLength") is not None else 'NULL'}, 
-                        {row_cnt}, 
-                        {max_length if max_length is not None else 'NULL'}, 
-                        '{alter_column_sql.replace("'", "''")}')
-                    """
-                    execute_sql_with_timeout(
-                        conn, 
-                        direct_sql, 
-                        timeout=config["sql_timeout"]
+                    cur.execute(
+                        insert_sql,
+                        (
+                            schema_name,
+                            table_name,
+                            column_name,
+                            datatype,
+                            row_dict.get("CurrentLength"),
+                            row_cnt,
+                            max_length,
+                            alter_column_sql,
+                        ),
                     )
+                    conn.last_cursor = cur
                 except Exception as e:
                     conn.rollback()
                     error_msg = f"Error inserting LOB column {schema_name}.{table_name}.{column_name}: {e}"
@@ -304,7 +313,12 @@ def gather_lob_columns(
             processed += 1
             progress.update(1)
 
+            if processed % batch_size == 0:
+                conn.commit()
+
         progress.close()
+        if processed % batch_size != 0:
+            conn.commit()
         logger.info(f"Analyzed and cataloged {processed} LOB columns")
 
 def execute_lob_column_updates(
