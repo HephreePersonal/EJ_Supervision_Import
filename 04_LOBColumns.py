@@ -25,7 +25,7 @@ import tkinter as tk
 from tkinter import messagebox
 
 import pyodbc
-from db.mssql import get_target_connection
+from db.connections import get_target_connection
 from utils.logging_helper import setup_logging, operation_counts
 from config import settings, parse_database_name, ETLConstants
 

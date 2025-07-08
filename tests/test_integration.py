@@ -19,6 +19,7 @@ if "sqlalchemy" not in sys.modules:
     engine_mod = types.ModuleType("engine")
     engine_mod.Engine = object
     engine_mod.Connection = object
+    engine_mod.URL = types.SimpleNamespace(create=lambda *a, **k: None)
     sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.types"] = sa_mod.types
@@ -65,7 +66,7 @@ if "pydantic" not in sys.modules:
     sys.modules["pydantic_settings"] = ps_mod
 
 from etl.base_importer import BaseDBImporter
-import db.mssql as mssql
+import db.connections as connections
 
 
 class MiniImporter(BaseDBImporter):
@@ -177,7 +178,7 @@ def test_end_to_end_mini_importer(monkeypatch, tmp_path):
     conn = sqlite3.connect(":memory:")
 
     # Patch the connection retrieval used inside BaseDBImporter
-    monkeypatch.setattr(mssql, "get_target_connection", lambda: conn)
+    monkeypatch.setattr(connections, "get_target_connection", lambda: conn)
     monkeypatch.setattr("etl.base_importer.get_target_connection", lambda: conn)
 
     importer = MiniImporter()
@@ -206,7 +207,7 @@ def test_end_to_end_full_importer(monkeypatch, tmp_path):
 
     conn = sqlite3.connect(":memory:")
 
-    monkeypatch.setattr(mssql, "get_target_connection", lambda: conn)
+    monkeypatch.setattr(connections, "get_target_connection", lambda: conn)
     monkeypatch.setattr("etl.base_importer.get_target_connection", lambda: conn)
 
     importer = FullImporter()

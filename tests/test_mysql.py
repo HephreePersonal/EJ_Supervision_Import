@@ -14,6 +14,7 @@ if "sqlalchemy" not in sys.modules:
     engine_mod = types.ModuleType("engine")
     engine_mod.Engine = object
     engine_mod.Connection = object
+    engine_mod.URL = types.SimpleNamespace(create=lambda *a, **k: None)
     sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.pool"] = pool_mod
@@ -50,7 +51,7 @@ if "pydantic" not in sys.modules:
 
 import pytest
 
-import db.mysql as mysql
+import db.connections as connections
 
 class DummyConn:
     pass
@@ -73,12 +74,12 @@ def test_get_mysql_connection_env(monkeypatch):
         called['kwargs'] = kwargs
         return DummyEngine()
 
-    monkeypatch.setattr(mysql.sqlalchemy, 'create_engine', fake_create_engine, raising=False)
-    monkeypatch.setattr(mysql, '_engine', None, raising=False)
+    monkeypatch.setattr(connections.sqlalchemy, 'create_engine', fake_create_engine, raising=False)
+    monkeypatch.setattr(connections, '_engines', {}, raising=False)
 
-    conn = mysql.get_mysql_connection()
+    conn = connections.get_mysql_connection()
     assert isinstance(conn, DummyConn)
-    assert called['kwargs']['pool_size'] == mysql.settings.db_pool_size
+    assert called['kwargs']['pool_size'] == connections.settings.db_pool_size
 
 
 def test_get_mysql_connection_missing(monkeypatch):
@@ -88,4 +89,4 @@ def test_get_mysql_connection_missing(monkeypatch):
     monkeypatch.delenv('MYSQL_DATABASE', raising=False)
 
     with pytest.raises(ValueError):
-        mysql.get_mysql_connection()
+        connections.get_mysql_connection()
