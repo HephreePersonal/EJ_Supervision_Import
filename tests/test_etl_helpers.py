@@ -53,6 +53,14 @@ class DummyConn:
         self.rollbacks += 1
 
 
+class DummyConnNoAutocommit(DummyConn):
+    """Dummy connection without an ``autocommit`` attribute."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.autocommit
+
+
 def test_run_sql_step_success():
     conn = DummyConn()
     result = run_sql_step(conn, 'test', 'SELECT 1')
@@ -142,5 +150,25 @@ def test_transaction_scope_rollback_on_error():
             assert conn.autocommit is False
             raise RuntimeError('boom')
     assert conn.autocommit is True
+    assert conn.commits == 0
+    assert conn.rollbacks == 1
+
+
+def test_transaction_scope_no_autocommit_attribute_commit():
+    conn = DummyConnNoAutocommit()
+    assert not hasattr(conn, 'autocommit')
+    with transaction_scope(conn):
+        assert not hasattr(conn, 'autocommit')
+    assert not hasattr(conn, 'autocommit')
+    assert conn.commits == 1
+    assert conn.rollbacks == 0
+
+
+def test_transaction_scope_no_autocommit_attribute_rollback():
+    conn = DummyConnNoAutocommit()
+    with pytest.raises(RuntimeError):
+        with transaction_scope(conn):
+            raise RuntimeError('boom')
+    assert not hasattr(conn, 'autocommit')
     assert conn.commits == 0
     assert conn.rollbacks == 1
