@@ -172,3 +172,47 @@ def test_drop_empty_tables(tmp_path, monkeypatch):
 
     remaining = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='dest'").fetchall()
     assert remaining == []
+
+
+def test_process_table_row_error_propagates(tmp_path, monkeypatch):
+    importer = BaseDBImporter()
+    importer.config = {
+        "sql_timeout": 100,
+        "include_empty_tables": True,
+        "log_file": str(tmp_path / "err.log"),
+    }
+    importer.db_name = "main"
+
+    import sqlite3
+
+    conn = sqlite3.connect(":memory:")
+
+    class DummyCursor:
+        def fetchone(self):
+            return (0,)
+
+    def fake_exec(*args, **kwargs):
+        return DummyCursor()
+
+    monkeypatch.setattr("utils.etl_helpers.execute_sql_with_timeout", fake_exec)
+    monkeypatch.setattr("etl.base_importer.execute_sql_with_timeout", fake_exec)
+
+    from utils.etl_helpers import SQLExecutionError
+
+    def fake_sanitize(*args, **kwargs):
+        raise SQLExecutionError("DROP", Exception("boom"), table_name="dbo.dest")
+
+    monkeypatch.setattr("etl.base_importer.sanitize_sql", fake_sanitize)
+
+    row = {
+        "RowID": 1,
+        "Drop_IfExists": "DROP TABLE dest",
+        "Select_Into": "CREATE TABLE dest AS SELECT * FROM src",
+        "TableName": "dest",
+        "SchemaName": "dbo",
+        "ScopeRowCount": 1,
+        "fConvert": 1,
+    }
+
+    with pytest.raises(SQLExecutionError):
+        importer._process_table_operation_row(conn, row, 1, importer.config["log_file"])

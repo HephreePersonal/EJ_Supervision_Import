@@ -20,6 +20,8 @@ import sqlalchemy
 import urllib
 from dotenv import load_dotenv
 from sqlalchemy.types import Text
+from sqlalchemy.exc import SQLAlchemyError
+from utils.etl_helpers import SQLExecutionError
 from tqdm import tqdm
 import tkinter as tk
 from tkinter import messagebox
@@ -152,7 +154,7 @@ def get_max_length(
         cur = execute_sql_with_timeout(conn, sql, timeout=timeout)
         result = cur.fetchone()
         return result[0] if result and result[0] is not None else 0
-    except Exception as e:
+    except (SQLAlchemyError, pyodbc.Error) as e:
         logger.error(
             f"Error getting max length for {schema}.{table}.{column}: {e}"
         )
@@ -301,15 +303,19 @@ def gather_lob_columns(
                         ),
                     )
                     conn.last_cursor = cur
-                except Exception as e:
+                except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
                     conn.rollback()
-                    error_msg = f"Error inserting LOB column {schema_name}.{table_name}.{column_name}: {e}"
+                    error_msg = (
+                        f"Error inserting LOB column {schema_name}.{table_name}.{column_name}: {e}"
+                    )
                     logger.error(error_msg)
                     log_exception_to_file(error_msg, log_file)
                     
-            except Exception as e:
+            except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
                 conn.rollback()
-                error_msg = f"Error processing LOB column {schema_name}.{table_name}.{column_name}: {e}"
+                error_msg = (
+                    f"Error processing LOB column {schema_name}.{table_name}.{column_name}: {e}"
+                )
                 logger.error(error_msg)
                 log_exception_to_file(error_msg, log_file)
                 
@@ -366,11 +372,12 @@ def execute_lob_column_updates(
                         timeout=config['sql_timeout'],
                     )
                     conn.commit()
-                except Exception as e:
+                except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
                     conn.rollback()
                     error_msg = f"Failed to alter column (statement {idx}): {e}"
                     logger.error(error_msg)
                     log_exception_to_file(error_msg, log_file)
+                    raise
 
     logger.info(f"Completed optimizing {len(rows)} LOB columns")
 
@@ -449,11 +456,11 @@ def main() -> None:
                     operation_counts["failure"],
                 )
                 
-        except Exception as e:
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
             logger.exception("Unexpected error during database operations")
-            raise e
+            raise
                 
-    except Exception as e:
+    except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
         logger.exception("Unexpected error")
         import traceback
         error_details = traceback.format_exc()

@@ -246,7 +246,7 @@ class App(tk.Tk):
             return
         try:
             pyodbc.connect(conn_str, timeout=5)
-        except Exception as exc:
+        except pyodbc.Error as exc:
             messagebox.showerror("Connection Failed", str(exc))
             return
 
