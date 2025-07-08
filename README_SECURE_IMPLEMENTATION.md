@@ -225,4 +225,9 @@ If issues occur after migration:
    python 01_JusticeDB_Import.py
    ```
 
-## Fu
+## Future Enhancements
+
+The secure ETL framework will continue to evolve. Planned improvements include
+additional SQL validation heuristics, integration with cloud-based secret
+management services, and automated security auditing. Community feedback and
+contributions are welcome as we refine these features.
