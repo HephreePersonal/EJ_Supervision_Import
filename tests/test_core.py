@@ -1,57 +1,5 @@
-import os
 import pytest
-import sys, types
 import sqlite3
-
-if "tqdm" not in sys.modules:
-    dummy = types.ModuleType("tqdm")
-    def _tqdm(iterable, **kwargs):
-        for item in iterable:
-            yield item
-    dummy.tqdm = _tqdm
-    sys.modules["tqdm"] = dummy
-
-if "dotenv" not in sys.modules:
-    mod = types.ModuleType("dotenv")
-    mod.load_dotenv = lambda *a, **k: None
-    sys.modules["dotenv"] = mod
-
-if "sqlalchemy" not in sys.modules:
-    sa_mod = types.ModuleType("sqlalchemy")
-    sa_mod.MetaData = lambda *a, **k: None
-    pool_mod = types.ModuleType("pool")
-    pool_mod.NullPool = object
-    sa_mod.pool = pool_mod
-    engine_mod = types.ModuleType("engine")
-    engine_mod.Engine = object
-    engine_mod.Connection = object
-    sa_mod.engine = engine_mod
-    sys.modules["sqlalchemy"] = sa_mod
-    sys.modules["sqlalchemy.pool"] = pool_mod
-    sys.modules["sqlalchemy.engine"] = engine_mod
-
-if "pydantic" not in sys.modules:
-    pd_mod = types.ModuleType("pydantic")
-    class _BaseSettings:
-        def __init__(self, **values):
-            for k, v in values.items():
-                setattr(self, k, v)
-    pd_mod.BaseSettings = _BaseSettings
-    pd_mod.DirectoryPath = str
-    pd_mod.Field = lambda *a, **k: None
-    class _SecretStr(str):
-        def get_secret_value(self):
-            return str(self)
-    pd_mod.SecretStr = _SecretStr
-    def _validator(*a, **k):
-        def dec(func):
-            return func
-        return dec
-    pd_mod.validator = _validator
-    sys.modules["pydantic"] = pd_mod
-    ps_mod = types.ModuleType("pydantic_settings")
-    ps_mod.BaseSettings = _BaseSettings
-    sys.modules["pydantic_settings"] = ps_mod
 
 from etl.core import sanitize_sql
 
