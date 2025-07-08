@@ -83,37 +83,41 @@ class FinancialDBImporter(BaseDBImporter):
             help="Path to JSON configuration file with all settings."
         )
         parser.add_argument(
-            "--verbose", "-v", 
+            "--verbose", "-v",
             action="store_true",
             help="Enable verbose logging."
+        )
+        parser.add_argument(
+            "--extra-validation",
+            action="store_true",
+            help="Enable extra SQL validation checks"
         )
         return parser.parse_args()
         
     def execute_preprocessing(self, conn: Any) -> None:
         """Define supervision scope for Financial DB."""
         logger.info("Defining supervision scope...")
-        steps = [
-            {'name': 'GatherFeeInstanceIDs', 'sql': load_sql('financial/gather_feeinstanceids.sql', self.db_name)},
-                ]
-        
+        steps = [("GatherFeeInstanceIDs", "financial/gather_feeinstanceids.sql")]
+
         with transaction_scope(conn):
-            for step in core.safe_tqdm(steps, desc="SQL Script Progress", unit="step"):
-                run_sql_step(conn, step['name'], step['sql'], timeout=self.config['sql_timeout'])
-                conn.commit()
+            for name, script in core.safe_tqdm(steps, desc="SQL Script Progress", unit="step"):
+                self.run_sql_file(conn, name, script)
         
         logger.info("All Staging steps completed successfully. Supervision Scope Defined.")
     
     def prepare_drop_and_select(self, conn: Any) -> None:
         """Prepare SQL statements for dropping and selecting data."""
         logger.info("Gathering list of Financial tables with SQL Commands to be migrated.")
-        additional_sql = load_sql('financial/gather_drops_and_selects_financial.sql', self.db_name)
-        run_sql_script(conn, 'gather_drops_and_selects_financial', additional_sql, timeout=self.config['sql_timeout'])
+        self.run_sql_file(
+            conn,
+            "gather_drops_and_selects_financial",
+            "financial/gather_drops_and_selects_financial.sql",
+        )
     
     def update_joins_in_tables(self, conn: Any) -> None:
         """Update the TablesToConvert table with JOINs."""
         logger.info("Updating JOINS in TablesToConvert List")
-        update_joins_sql = load_sql('financial/update_joins_financial.sql', self.db_name)
-        run_sql_script(conn, 'update_joins_financial', update_joins_sql, timeout=self.config['sql_timeout'])
+        self.run_sql_file(conn, "update_joins_financial", "financial/update_joins_financial.sql")
         logger.info("Updating JOINS for Financial tables is complete.")
     
     def get_next_step_name(self) -> str:

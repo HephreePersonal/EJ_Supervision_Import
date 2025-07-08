@@ -22,6 +22,7 @@ from utils.etl_helpers import (
     transaction_scope,
     execute_sql_with_timeout,
 )
+from utils.sql_security import validate_sql_statement
 from etl.core import (
     sanitize_sql,
     safe_tqdm,
@@ -53,6 +54,7 @@ class BaseDBImporter:
                 f"{self.DB_TYPE}_progress.json",
             ),
         )
+        self.extra_validation = False
 
     def parse_args(self) -> argparse.Namespace:
         parser = argparse.ArgumentParser(description=f"{self.DB_TYPE} database import operations")
@@ -60,6 +62,11 @@ class BaseDBImporter:
         parser.add_argument("--config", dest="config_file",
                            default="config/values.json",  # Set default config path
                            help="Path to configuration file")
+        parser.add_argument(
+            "--extra-validation",
+            action="store_true",
+            help="Enable extra SQL validation checks",
+        )
         return parser.parse_args()
 
     def validate_environment(self) -> None:
@@ -153,6 +160,13 @@ class BaseDBImporter:
                 json.dump(data, f)
         except Exception as exc:  # pragma: no cover - unlikely
             logger.error("Failed to write progress file %s: %s", self.progress_file, exc)
+
+    def run_sql_file(self, conn: Any, name: str, filename: str) -> None:
+        """Load a SQL file and execute it with optional validation."""
+        sql = load_sql(filename, self.db_name)
+        if self.extra_validation:
+            sql = validate_sql_statement(sql, allow_ddl=True)
+        run_sql_script(conn, name, sql, timeout=self.config["sql_timeout"])
 
     def import_joins(self) -> sqlalchemy.engine.Engine:
         """Import JOIN statements from CSV to build selection queries."""
@@ -786,6 +800,9 @@ class BaseDBImporter:
         try:
             # Parse command line args and load config
             args = self.parse_args()
+            self.extra_validation = bool(os.environ.get("EJ_EXTRA_VALIDATION"))
+            if getattr(args, "extra_validation", False):
+                self.extra_validation = True
             self.validate_environment()
             self.load_config(args)
 
