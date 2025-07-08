@@ -1,9 +1,9 @@
 """ETL script to migrate Operations database tables.
 
-The script reads SQL under ``sql_scripts/operations`` and applies it to the
-database defined by the ``MSSQL_TARGET_CONN_STR`` environment variable.  Command
-line arguments mirror those of ``01_JusticeDB_Import.py`` allowing CSV and log
-locations to be overridden.
+The importer executes SQL from ``sql_scripts/operations`` against the database
+configured via ``MSSQL_TARGET_CONN_STR``. Command line options mirror those of
+the Justice importer. Consult ``README.md`` for ``Quick Start`` instructions
+and the overall ``ETL Process Flow``.
 """
 
 import logging
@@ -53,7 +53,10 @@ class OperationsDBImporter(BaseDBImporter):
     DEFAULT_CSV_FILE = "EJ_Operations_Selects_ALL.csv"
     
     def parse_args(self) -> argparse.Namespace:
-        """Parse command line arguments for the Operations DB import script."""
+        """Parse command line arguments for the Operations DB import script.
+
+        Example usage can be found in ``README.md`` under ``Quick Start``.
+        """
         parser = argparse.ArgumentParser(description="Operations DB Import ETL Process")
         parser.add_argument(
             "--log-file",

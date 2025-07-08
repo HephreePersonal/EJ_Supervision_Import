@@ -1,8 +1,9 @@
 """ETL script to migrate Financial database tables to the target server.
 
-SQL files under ``sql_scripts/financial`` are executed in sequence.  Environment
-variables and command line options control the log path, CSV file location and
-whether empty tables are processed.
+SQL under ``sql_scripts/financial`` is executed sequentially. Environment
+variables and command line options control logging, CSV paths and the handling
+of empty tables. See ``README.md`` for setup details and the ``ETL Process
+Flow``.
 """
 
 import logging
@@ -52,7 +53,10 @@ class FinancialDBImporter(BaseDBImporter):
     DEFAULT_CSV_FILE = "EJ_Financial_Selects_ALL.csv"
     
     def parse_args(self) -> argparse.Namespace:
-        """Parse command line arguments for the Financial DB import script."""
+        """Parse command line arguments for the Financial DB import script.
+
+        Example usage can be found in ``README.md`` under ``Quick Start``.
+        """
         parser = argparse.ArgumentParser(description="Financial DB Import ETL Process")
         parser.add_argument(
             "--log-file",

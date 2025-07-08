@@ -1,9 +1,9 @@
 """ETL script to migrate Justice database tables to the target server.
 
-The script loads SQL files under ``sql_scripts/justice`` and executes them
-against the database specified via ``MSSQL_TARGET_CONN_STR``.  Command line
-arguments allow overriding the log file location, CSV directory and other
-options.
+SQL files under ``sql_scripts/justice`` are executed against the database
+specified via ``MSSQL_TARGET_CONN_STR``. Command line options allow overriding
+the log and CSV locations. See ``README.md`` under ``Quick Start`` and ``ETL
+Process Flow`` for usage details.
 """
 
 import logging
@@ -55,7 +55,11 @@ class JusticeDBImporter(BaseDBImporter):
     DEFAULT_CSV_FILE = "EJ_Justice_Selects_ALL.csv"
     
     def parse_args(self) -> argparse.Namespace:
-        """Parse command line arguments for the Justice DB import script."""
+        """Parse command line arguments for the Justice DB import script.
+
+        Command usage examples are provided in the ``Quick Start`` section of
+        ``README.md``.
+        """
         parser = argparse.ArgumentParser(description="Justice DB Import ETL Process")
         parser.add_argument(
             "--log-file",

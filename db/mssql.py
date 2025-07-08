@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-"""Convenience wrappers for establishing MSSQL connections."""
+"""Convenience wrappers for establishing MSSQL connections.
+
+This module re-exports connection helpers used throughout the ETL scripts.
+Connection string details are documented in the ``Configuration`` section of
+``README.md``.
+"""
 
 from typing import Any
 
