@@ -18,6 +18,7 @@ if "sqlalchemy" not in sys.modules:
     engine_mod = types.ModuleType("engine")
     engine_mod.Engine = object
     engine_mod.Connection = object
+    engine_mod.URL = types.SimpleNamespace(create=lambda *a, **k: None)
     sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.engine"] = engine_mod
@@ -46,7 +47,7 @@ if "pydantic" not in sys.modules:
     ps_mod = types.ModuleType("pydantic_settings")
     ps_mod.BaseSettings = _BaseSettings
     sys.modules["pydantic_settings"] = ps_mod
-import db.mssql as mssql
+import db.connections as connections
 from config import settings
 
 class DummyConn:
@@ -73,8 +74,8 @@ def test_get_target_connection(monkeypatch):
     monkeypatch.setattr(settings, 'db_pool_size', 5, raising=False)
     monkeypatch.setattr(settings, 'db_max_overflow', 10, raising=False)
     monkeypatch.setattr(settings, 'db_pool_timeout', 30, raising=False)
-    monkeypatch.setattr(mssql.sqlalchemy, 'create_engine', fake_create_engine, raising=False)
+    monkeypatch.setattr(connections.sqlalchemy, 'create_engine', fake_create_engine, raising=False)
 
-    conn = mssql.get_target_connection()
+    conn = connections.get_target_connection()
     assert isinstance(conn, DummyConn)
     assert created['kwargs']['pool_size'] == settings.db_pool_size

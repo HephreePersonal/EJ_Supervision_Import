@@ -14,7 +14,7 @@ import sqlalchemy
 from typing import Any, Optional
 from sqlalchemy.types import Text
 
-from db.mssql import get_target_connection
+from db.connections import get_target_connection
 from utils.etl_helpers import (
     load_sql,
     run_sql_script,

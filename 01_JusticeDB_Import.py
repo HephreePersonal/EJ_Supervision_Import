@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 import pandas as pd
 import urllib
 import sqlalchemy
-from db.mssql import get_target_connection
+from db.connections import get_target_connection
 from tqdm import tqdm
 from etl import core
 from etl import BaseDBImporter

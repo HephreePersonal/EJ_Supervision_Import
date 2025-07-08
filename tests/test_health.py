@@ -11,6 +11,7 @@ if "sqlalchemy" not in sys.modules:
     engine_mod = types.ModuleType("engine")
     engine_mod.Engine = object
     engine_mod.Connection = object
+    engine_mod.URL = types.SimpleNamespace(create=lambda *a, **k: None)
     sa_mod.engine = engine_mod
     sys.modules["sqlalchemy"] = sa_mod
     sys.modules["sqlalchemy.pool"] = pool_mod
