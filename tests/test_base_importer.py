@@ -74,6 +74,7 @@ if "dotenv" not in sys.modules:
     sys.modules["dotenv"] = mod
 
 from etl.base_importer import BaseDBImporter
+from utils.progress_tracker import ProgressTracker
 
 
 def test_validate_environment_missing_all(monkeypatch):
@@ -187,12 +188,14 @@ def test_process_table_row_validation(tmp_path, monkeypatch):
 
 
 def test_progress_helpers(tmp_path):
-    importer = BaseDBImporter()
-    importer.progress_file = str(tmp_path / "prog.json")
+    path = tmp_path / "prog.json"
+    tracker = ProgressTracker(str(path))
 
-    assert importer._get_progress("table_operations") == 0
-    importer._update_progress("table_operations", 5)
-    assert importer._get_progress("table_operations") == 5
+    assert tracker.get("table_operations") == 0
+    tracker.update("table_operations", 5)
+    assert tracker.get("table_operations") == 5
+    tracker.delete()
+    assert not path.exists()
 
 
 def test_should_process_table_overrides():

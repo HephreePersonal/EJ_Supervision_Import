@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import json
 import argparse
 import tkinter as tk
 from tkinter import messagebox
@@ -22,6 +21,7 @@ from utils.etl_helpers import (
     transaction_scope,
     execute_sql_with_timeout,
 )
+from utils.progress_tracker import ProgressTracker
 from utils.sql_security import validate_sql_statement
 from etl.core import (
     sanitize_sql,
@@ -54,6 +54,7 @@ class BaseDBImporter:
                 f"{self.DB_TYPE}_progress.json",
             ),
         )
+        self.progress = ProgressTracker(self.progress_file)
         self.extra_validation = False
 
     def parse_args(self) -> argparse.Namespace:
@@ -131,35 +132,6 @@ class BaseDBImporter:
             self.config["csv_filename"]
         )
 
-    def _load_progress(self) -> dict:
-        """Return progress data from ``self.progress_file`` if present."""
-        if not self.progress_file or not os.path.exists(self.progress_file):
-            return {}
-        try:
-            with open(self.progress_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as exc:  # pragma: no cover - edge case
-            logger.error("Failed to read progress file %s: %s", self.progress_file, exc)
-            return {}
-
-    def _get_progress(self, key: str) -> int:
-        data = self._load_progress()
-        try:
-            return int(data.get(key, 0))
-        except Exception:
-            return 0
-
-    def _update_progress(self, key: str, value: int) -> None:
-        if not self.progress_file:
-            return
-        data = self._load_progress()
-        data[key] = value
-        try:
-            os.makedirs(os.path.dirname(self.progress_file), exist_ok=True)
-            with open(self.progress_file, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-        except Exception as exc:  # pragma: no cover - unlikely
-            logger.error("Failed to write progress file %s: %s", self.progress_file, exc)
 
     def run_sql_file(self, conn: Any, name: str, filename: str) -> None:
         """Load a SQL file and execute it with optional validation."""
@@ -231,7 +203,7 @@ class BaseDBImporter:
         db_name = validate_sql_identifier(self.db_name)
         successful_tables = 0
         failed_tables = 0
-        start_idx = self._get_progress("table_operations")
+        start_idx = self.progress.get("table_operations")
 
         try:
             with transaction_scope(conn):
@@ -245,7 +217,7 @@ class BaseDBImporter:
                     try:
                         if self._process_table_operation_row(conn, row_dict, idx, log_file):
                             successful_tables += 1
-                            self._update_progress("table_operations", idx)
+                            self.progress.update("table_operations", idx)
                         else:
                             failed_tables += 1
                     except Exception as row_error:
@@ -680,12 +652,12 @@ class BaseDBImporter:
         with transaction_scope(conn):
             rows = self._fetch_pk_rows(conn, db_name, pk_table, tables_table)
 
-            start_idx = self._get_progress("pk_creation")
+            start_idx = self.progress.get("pk_creation")
             for idx, row in enumerate(safe_tqdm(rows, desc="PK Creation", unit="table"), 1):
                 if idx <= start_idx:
                     continue
                 self._process_pk_row(conn, row, idx, log_file)
-                self._update_progress("pk_creation", idx)
+                self.progress.update("pk_creation", idx)
 
         logger.info(f"All Primary Key/NOT NULL statements executed FOR THE {self.DB_TYPE} DATABASE.")
 
@@ -806,11 +778,8 @@ class BaseDBImporter:
             self.validate_environment()
             self.load_config(args)
 
-            if os.environ.get("RESUME") != "1" and os.path.exists(self.progress_file):
-                try:
-                    os.remove(self.progress_file)
-                except OSError:
-                    pass
+            if os.environ.get("RESUME") != "1":
+                self.progress.delete()
 
             # Set up logging level
             if args.verbose:
@@ -854,11 +823,7 @@ class BaseDBImporter:
                 next_step_name = self.get_next_step_name()
                 proceed = self.show_completion_message(next_step_name)
 
-                if os.path.exists(self.progress_file):
-                    try:
-                        os.remove(self.progress_file)
-                    except OSError:
-                        pass
+                self.progress.delete()
 
                 if proceed and next_step_name:
                     logger.info(f"User chose to proceed to {next_step_name}.")
