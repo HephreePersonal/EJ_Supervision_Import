@@ -84,37 +84,41 @@ class OperationsDBImporter(BaseDBImporter):
             help="Path to JSON configuration file with all settings."
         )
         parser.add_argument(
-            "--verbose", "-v", 
+            "--verbose", "-v",
             action="store_true",
             help="Enable verbose logging."
+        )
+        parser.add_argument(
+            "--extra-validation",
+            action="store_true",
+            help="Enable extra SQL validation checks"
         )
         return parser.parse_args()
         
     def execute_preprocessing(self, conn: Any) -> None:
         """Define supervision scope for Operations DB."""
         logger.info("Defining supervision scope...")
-        steps = [
-            {'name': 'GatherDocumentIDs', 'sql': load_sql('operations/gather_documentids.sql', self.db_name)},
-                ]
-        
+        steps = [("GatherDocumentIDs", "operations/gather_documentids.sql")]
+
         with transaction_scope(conn):
-            for step in core.safe_tqdm(steps, desc="SQL Script Progress", unit="step"):
-                run_sql_step(conn, step['name'], step['sql'], timeout=self.config['sql_timeout'])
-                conn.commit()
+            for name, script in core.safe_tqdm(steps, desc="SQL Script Progress", unit="step"):
+                self.run_sql_file(conn, name, script)
         
         logger.info("All Staging steps completed successfully. Document Conversion Scope Defined.")
     
     def prepare_drop_and_select(self, conn: Any) -> None:
         """Prepare SQL statements for dropping and selecting data."""
         logger.info("Gathering list of Operations tables with SQL Commands to be migrated.")
-        additional_sql = load_sql('operations/gather_drops_and_selects_operations.sql', self.db_name)
-        run_sql_script(conn, 'gather_drops_and_selects_operations', additional_sql, timeout=self.config['sql_timeout'])
+        self.run_sql_file(
+            conn,
+            "gather_drops_and_selects_operations",
+            "operations/gather_drops_and_selects_operations.sql",
+        )
     
     def update_joins_in_tables(self, conn: Any) -> None:
         """Update the TablesToConvert table with JOINs."""
         logger.info("Updating JOINS in TablesToConvert List")
-        update_joins_sql = load_sql('operations/update_joins_operations.sql', self.db_name)
-        run_sql_script(conn, 'update_joins', update_joins_sql, timeout=self.config['sql_timeout'])
+        self.run_sql_file(conn, "update_joins", "operations/update_joins_operations.sql")
         logger.info("Updating JOINS for Operations tables is complete.")
     
     def get_next_step_name(self) -> str:

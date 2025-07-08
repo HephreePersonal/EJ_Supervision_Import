@@ -86,39 +86,41 @@ class JusticeDBImporter(BaseDBImporter):
             help="Path to JSON configuration file with all settings."
         )
         parser.add_argument(
-            "--verbose", "-v", 
+            "--verbose", "-v",
             action="store_true",
             help="Enable verbose logging."
+        )
+        parser.add_argument(
+            "--extra-validation",
+            action="store_true",
+            help="Enable extra SQL validation checks"
         )
         return parser.parse_args()
     def execute_preprocessing(self, conn: Any) -> None:
         """Define supervision scope for Justice DB."""
         logger.info("Defining supervision scope...")
         steps = [
-            {'name': 'GatherCaseIDs', 'sql': load_sql('justice/gather_caseids.sql', self.db_name)},
-            {'name': 'GatherChargeIDs', 'sql': load_sql('justice/gather_chargeids.sql', self.db_name)},
-            {'name': 'GatherPartyIDs', 'sql': load_sql('justice/gather_partyids.sql', self.db_name)},
-            {'name': 'GatherWarrantIDs', 'sql': load_sql('justice/gather_warrantids.sql', self.db_name)},
-            {'name': 'GatherHearingIDs', 'sql': load_sql('justice/gather_hearingids.sql', self.db_name)},
-            {'name': 'GatherEventIDs', 'sql': load_sql('justice/gather_eventids.sql', self.db_name)}
+            ("GatherCaseIDs", "justice/gather_caseids.sql"),
+            ("GatherChargeIDs", "justice/gather_chargeids.sql"),
+            ("GatherPartyIDs", "justice/gather_partyids.sql"),
+            ("GatherWarrantIDs", "justice/gather_warrantids.sql"),
+            ("GatherHearingIDs", "justice/gather_hearingids.sql"),
+            ("GatherEventIDs", "justice/gather_eventids.sql"),
         ]
-        
+
         with transaction_scope(conn):
-            for step in safe_tqdm(steps, desc="SQL Script Progress", unit="step"):
-                run_sql_step(conn, step['name'], step['sql'], timeout=self.config['sql_timeout'])
-                # Remove the conn.commit() call - transaction_scope will handle the commit
+            for name, script in safe_tqdm(steps, desc="SQL Script Progress", unit="step"):
+                self.run_sql_file(conn, name, script)
         
         logger.info("All Staging steps completed successfully. Supervision Scope Defined.")
     def prepare_drop_and_select(self, conn: Any) -> None:
         """Prepare SQL statements for dropping and selecting data."""
         logger.info("Gathering list of Justice tables with SQL Commands to be migrated.")
-        additional_sql = load_sql('justice/gather_drops_and_selects.sql', self.db_name)
-        run_sql_script(conn, 'gather_drops_and_selects', additional_sql, timeout=self.config['sql_timeout'])
+        self.run_sql_file(conn, "gather_drops_and_selects", "justice/gather_drops_and_selects.sql")
     def update_joins_in_tables(self, conn: Any) -> None:
         """Update the TablesToConvert table with JOINs."""
         logger.info("Updating JOINS in TablesToConvert List")
-        update_joins_sql = load_sql('justice/update_joins.sql', self.db_name)
-        run_sql_script(conn, 'update_joins', update_joins_sql, timeout=self.config['sql_timeout'])
+        self.run_sql_file(conn, "update_joins", "justice/update_joins.sql")
         logger.info("Updating JOINS for Justice tables is complete.")
        
     def get_next_step_name(self) -> str:
