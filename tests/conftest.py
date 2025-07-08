@@ -25,11 +25,14 @@ def _install_stubs():
         engine_mod.Connection = object
         engine_mod.URL = types.SimpleNamespace(create=lambda *a, **k: None)
         sa_mod.engine = engine_mod
+        exc_mod = types.ModuleType("exc")
+        exc_mod.SQLAlchemyError = Exception
         modules.update({
             "sqlalchemy": sa_mod,
             "sqlalchemy.pool": pool_mod,
             "sqlalchemy.engine": engine_mod,
             "sqlalchemy.types": types.SimpleNamespace(Text=lambda *a, **k: None),
+            "sqlalchemy.exc": exc_mod,
         })
     if "pydantic" not in sys.modules:
         pd_mod = types.ModuleType("pydantic")

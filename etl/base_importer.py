@@ -12,6 +12,10 @@ import urllib
 import sqlalchemy
 from typing import Any, Optional
 from sqlalchemy.types import Text
+from sqlalchemy.exc import SQLAlchemyError
+import pyodbc
+
+from utils.etl_helpers import SQLExecutionError
 
 from db.connections import get_target_connection
 from utils.etl_helpers import (
@@ -220,14 +224,15 @@ class BaseDBImporter:
                             self.progress.update("table_operations", idx)
                         else:
                             failed_tables += 1
-                    except Exception as row_error:
-                        error_msg = f"Row processing error for row {idx}: {str(row_error)}"
+                    except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as row_error:
+                        table = f"{row_dict.get('SchemaName')}.{row_dict.get('TableName')}"
+                        error_msg = f"Row processing error during DROP/SELECT for {table}: {row_error}"
                         logger.error(error_msg)
                         log_exception_to_file(error_msg, log_file)
-                        failed_tables += 1
+                        raise
 
-        except Exception as query_error:
-            error_msg = f"Fatal query error: {str(query_error)}"
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as query_error:
+            error_msg = f"Fatal query error during table operations: {query_error}"
             logger.error(error_msg)
             log_exception_to_file(error_msg, log_file)
             raise
@@ -257,7 +262,7 @@ class BaseDBImporter:
             cursor = execute_sql_with_timeout(
                 conn, query, timeout=self.config["sql_timeout"]
             )
-        except Exception as e:  # pragma: no cover - depends on DB
+        except (SQLAlchemyError, pyodbc.Error) as e:  # pragma: no cover - depends on DB
             logger.warning(f"Could not fetch empty tables: {e}")
             return
 
@@ -275,7 +280,7 @@ class BaseDBImporter:
                     {f"col{i}": val for i, val in enumerate(r)}
                     for r in cursor.fetchall()
                 ]
-        except Exception as e:  # pragma: no cover - edge case
+        except (SQLAlchemyError, pyodbc.Error) as e:  # pragma: no cover - edge case
             logger.error(f"Failed processing empty table query: {e}")
             return
 
@@ -303,8 +308,10 @@ class BaseDBImporter:
                         drop_sql,
                         timeout=self.config["sql_timeout"],
                     )
-                except Exception as e:
-                    logger.error(f"Error dropping table {schema_name}.{table_name}: {e}")
+                except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
+                    logger.error(
+                        f"Error dropping table {schema_name}.{table_name}: {e}"
+                    )
                     log_exception_to_file(str(e), log_file)
 
     def _fetch_table_operation_rows(self, conn: Any, db_name: str, table_name: str) -> list[dict[str, Any]]:
@@ -429,7 +436,7 @@ class BaseDBImporter:
                 params=(actual_rows, row_id),
                 timeout=self.config["sql_timeout"],
             )
-        except Exception as exc:
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as exc:
             msg = f"Failed to update row count for RowID {row_id}: {exc}"
             logger.error(msg)
             log_exception_to_file(msg, log_file)
@@ -517,7 +524,7 @@ class BaseDBImporter:
                                 # Use the actual count instead of the static ScopeRowCount
                                 scope_row_count = actual_count
                                 logger.debug(f"Validated row count for {full_table_name}: {actual_count}")
-                            except Exception as count_error:
+                            except (SQLAlchemyError, pyodbc.Error) as count_error:
                                 logger.warning(
                                     f"Count query failed for {full_table_name}, using original ScopeRowCount ({scope_row_count}): {count_error}"
                                 )
@@ -587,14 +594,14 @@ class BaseDBImporter:
             )
             return True
 
-        except Exception as sql_error:
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as sql_error:
             conn.rollback()
             error_msg = (
                 f"SQL execution error for row {idx} ({full_table_name}): {str(sql_error)}"
             )
             logger.error(error_msg)
             log_exception_to_file(error_msg, log_file)
-            return False
+            raise
 
     def create_primary_keys(self, conn: Any) -> None:
         """Create primary keys and NOT NULL constraints."""
@@ -625,11 +632,14 @@ class BaseDBImporter:
                 try:
                     conn.execute(sqlalchemy.text(stmt))
                     conn.commit()
-                except Exception as e:
-                    logger.error(f"Error executing statement {i+1}: {e}")
-                    log_exception_to_file(f"Error executing statement {i+1}: {e}\n\nStatement: {stmt}", log_file)
+                except (SQLAlchemyError, pyodbc.Error) as e:
+                    logger.error(f"Error executing statement {i+1} of PK script: {e}")
+                    log_exception_to_file(
+                        f"Error executing statement {i+1}: {e}\n\nStatement: {stmt}",
+                        log_file,
+                    )
                     raise
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Failed to execute primary key script: {e}")
             raise
 
@@ -639,7 +649,7 @@ class BaseDBImporter:
         verify_result = None
         try:
             verify_result = conn.execute(sqlalchemy.text(verify_sql)).fetchone()
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error verifying PrimaryKeyScripts table: {e}")
         
         if not verify_result:
@@ -673,7 +683,7 @@ class BaseDBImporter:
             if not verify_result or verify_result[0] < 2:
                 logger.error(f"One or both required tables missing: {pk_table}, {tables_table}")
                 return []
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error verifying required tables: {e}")
             return []
 
@@ -698,7 +708,7 @@ class BaseDBImporter:
 
         try:
             cursor = execute_sql_with_timeout(conn, query, timeout=self.config["sql_timeout"])
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error executing PK rows query: {e}")
             return []
             
@@ -720,7 +730,7 @@ class BaseDBImporter:
             else:
                 # Last resort fallback
                 return list(cursor)
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error processing PK query results: {e}")
             return []
 
@@ -740,13 +750,14 @@ class BaseDBImporter:
                     timeout=self.config['sql_timeout'],
                 )
                 conn.commit()
-            except Exception as e:
+            except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
                 conn.rollback()
                 error_msg = (
                     f"Error executing PK statements for row {idx} ({self.DB_TYPE}.{full_table_name}): {e}"
                 )
                 logger.error(error_msg)
                 log_exception_to_file(error_msg, log_file)
+                raise
 
     def show_completion_message(self, next_step_name: Optional[str] = None) -> bool:
         """Show a message box indicating completion and asking to continue."""
@@ -832,6 +843,23 @@ class BaseDBImporter:
                     logger.info(f"User chose to stop after {self.DB_TYPE} migration.")
                     return False
                     
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
+            logger.exception("Database error")
+            import traceback
+            error_details = traceback.format_exc()
+            try:
+                log_file = self.config.get('log_file', self.DEFAULT_LOG_FILE)
+                log_exception_to_file(error_details, log_file)
+            except Exception as log_exc:
+                logger.error(f"Failed to write to error log: {log_exc}")
+            try:
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror("ETL Script Error", f"An error occurred:\n\n{error_details}")
+                root.destroy()
+            except Exception as msgbox_exc:
+                logger.error(f"Failed to show error message box: {msgbox_exc}")
+            return False
         except Exception as e:
             logger.exception("Unexpected error")
             import traceback
