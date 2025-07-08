@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Any, Optional
 
 from dotenv import load_dotenv
 
 from pydantic_settings import BaseSettings
 from pydantic import DirectoryPath, Field, SecretStr, validator
+import keyring
+
+logger = logging.getLogger(__name__)
 
 
 # Load environment variables from a .env file if present.
@@ -132,3 +137,150 @@ class Settings(BaseSettings):
 
 # Instantiate once at import time
 settings = Settings()
+
+
+class SecretManager:
+    """Manage secrets using the system keyring."""
+
+    def __init__(self, service_name: str = "etl_supervision_importer"):
+        self.service_name = service_name
+
+    def store_secret(self, key: str, value: str) -> None:
+        try:
+            keyring.set_password(self.service_name, key, value)
+            logger.info(f"Secret {key} stored successfully")
+        except Exception as exc:  # pragma: no cover - system keyring may vary
+            raise RuntimeError(f"Failed to store secret {key}: {exc}") from exc
+
+    def get_secret(self, key: str) -> Optional[str]:
+        try:
+            secret = keyring.get_password(self.service_name, key)
+            if secret:
+                logger.debug(f"Secret {key} retrieved successfully")
+            return secret
+        except Exception as exc:  # pragma: no cover - system keyring may vary
+            logger.warning(f"Failed to retrieve secret {key}: {exc}")
+            return None
+
+    def delete_secret(self, key: str) -> None:
+        try:
+            keyring.delete_password(self.service_name, key)
+            logger.info(f"Secret {key} deleted successfully")
+        except Exception as exc:  # pragma: no cover - system keyring may vary
+            logger.warning(f"Failed to delete secret {key}: {exc}")
+
+
+class ConfigurationManager:
+    """Load and store configuration with optional secure helpers."""
+
+    def __init__(self, config_path: Optional[Path] = None):
+        self.config_path = config_path or Path("config/secure_config.json")
+        self.secret_manager = SecretManager()
+        self._settings: Optional[Settings] = None
+
+    def load_settings(self) -> Settings:
+        if self._settings is None:
+            env_vars = self._load_environment_variables()
+            file_config = self._load_file_config()
+            merged_config = {**file_config, **env_vars}
+
+            if not merged_config.get("MSSQL_TARGET_CONN_STR"):
+                conn_str = self.secret_manager.get_secret("mssql_connection")
+                if conn_str:
+                    merged_config["MSSQL_TARGET_CONN_STR"] = conn_str
+
+            self._settings = Settings(**merged_config)
+
+        return self._settings
+
+    def save_connection_string(self, connection_string: str) -> None:
+        self.secret_manager.store_secret("mssql_connection", connection_string)
+
+    def save_non_secret_config(self, config: Dict[str, Any]) -> None:
+        safe_config = {k: v for k, v in config.items() if not self._is_sensitive_key(k)}
+        self.config_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(self.config_path, "w") as fh:
+            json.dump(safe_config, fh, indent=2, default=str)
+        logger.info(f"Configuration saved to {self.config_path}")
+
+    def migrate_legacy_config(self, legacy_config_path: Path) -> None:
+        if not legacy_config_path.exists():
+            logger.info("No legacy config found, skipping migration")
+            return
+
+        with open(legacy_config_path) as fh:
+            legacy_config = json.load(fh)
+
+        if all(k in legacy_config for k in ["driver", "server", "database", "user", "password"]):
+            conn_str = (
+                f"DRIVER={legacy_config['driver']};"
+                f"SERVER={legacy_config['server']};"
+                f"DATABASE={legacy_config['database']};"
+                f"UID={legacy_config['user']};"
+                f"PWD={legacy_config['password']}"
+            )
+            self.save_connection_string(conn_str)
+            if "database" in legacy_config:
+                os.environ["MSSQL_TARGET_DB_NAME"] = legacy_config["database"]
+
+        safe_config = {k: v for k, v in legacy_config.items() if k not in ["driver", "server", "database", "user", "password"]}
+        self.save_non_secret_config(safe_config)
+
+        logger.info("Legacy configuration migrated successfully")
+        logger.warning(f"Please review and remove legacy config file: {legacy_config_path}")
+
+    def _load_environment_variables(self) -> Dict[str, Any]:
+        return {k: v for k, v in os.environ.items() if k.startswith(("MSSQL_", "EJ_", "SQL_", "CSV_", "DB_", "INCLUDE_", "FAIL_", "SKIP_", "MAX_", "CONNECTION_"))}
+
+    def _load_file_config(self) -> Dict[str, Any]:
+        if not self.config_path.exists():
+            return {}
+        try:
+            with open(self.config_path) as fh:
+                return json.load(fh)
+        except Exception as exc:
+            logger.error(f"Failed to load config file {self.config_path}: {exc}")
+            return {}
+
+    @staticmethod
+    def _is_sensitive_key(key: str) -> bool:
+        sensitive_patterns = [
+            "password",
+            "pwd",
+            "pass",
+            "secret",
+            "key",
+            "token",
+            "connection",
+            "conn_str",
+            "user",
+            "uid",
+            "username",
+        ]
+        key_lower = key.lower()
+        return any(pattern in key_lower for pattern in sensitive_patterns)
+
+
+def get_settings() -> Settings:
+    """Return settings loaded with optional secure helpers."""
+    manager = ConfigurationManager()
+    return manager.load_settings()
+
+
+# Backwards compatibility
+get_secure_settings = get_settings
+
+
+def migrate_existing_configuration() -> None:
+    """Migrate legacy plaintext configuration to the secure format."""
+    config_manager = ConfigurationManager()
+    legacy_config_path = Path("config/values.json")
+    if legacy_config_path.exists():
+        print("Found legacy configuration file. Migrating to secure storage...")
+        config_manager.migrate_legacy_config(legacy_config_path)
+        print("Migration completed!")
+        print(
+            f"Legacy file at {legacy_config_path} can be safely deleted after verification."
+        )
+    else:
+        print("No legacy configuration found.")

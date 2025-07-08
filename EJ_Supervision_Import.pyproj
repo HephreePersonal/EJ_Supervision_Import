@@ -29,7 +29,6 @@
     <Compile Include="03_FinancialDB_Import.py" />
     <Compile Include="03_FinancialDB_Import_Secure.py" />
     <Compile Include="04_LOBColumns.py" />
-    <Compile Include="config\secure_settings.py" />
     <Compile Include="config\settings.py" />
     <Compile Include="config\__init__.py" />
     <Compile Include="db\health.py" />
