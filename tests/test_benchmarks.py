@@ -1,9 +1,3 @@
-import sys, types
-
-if "pyodbc" not in sys.modules:
-    class _DummyError(Exception):
-        pass
-    sys.modules["pyodbc"] = types.SimpleNamespace(Error=_DummyError)
 
 import timeit
 import pytest
