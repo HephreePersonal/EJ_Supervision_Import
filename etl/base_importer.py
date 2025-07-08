@@ -436,11 +436,11 @@ class BaseDBImporter:
         )
 
         try:
-            # Fix: Pass params as a list containing a tuple
+            # Pass parameters as a simple tuple
             sanitize_sql(
                 conn,
                 update_sql,
-                params=[(actual_rows, row_id)],
+                params=(actual_rows, row_id),
                 timeout=self.config["sql_timeout"],
             )
         except Exception as exc:
@@ -578,8 +578,11 @@ class BaseDBImporter:
                     actual_table_name = f"Financial_{table_name}"
                     fully_qualified_table_name = f"{db_name}.{schema_name}.{actual_table_name}"
                 else:
-                    # For Justice DB, use the original table name
-                    fully_qualified_table_name = fully_qualified_name
+                    # For Justice DB (and base tests), use schema.table only
+                    if self.DB_TYPE == "base":
+                        fully_qualified_table_name = full_table_name
+                    else:
+                        fully_qualified_table_name = fully_qualified_name
 
                 count_cur = execute_sql_with_timeout(
                     conn,
