@@ -1,5 +1,3 @@
-"""Enhanced base importer with security, error handling, and performance improvements."""
-
 from __future__ import annotations
 
 import logging
@@ -72,8 +70,6 @@ class SecureETLException(Exception):
         self.original_error = original_error
         self.security_violation = security_violation
         self.timestamp = time.time()
-
-
 class SecureBaseDBImporter:
     """Enhanced base importer with security and performance improvements."""
     
@@ -518,8 +514,6 @@ class SecureBaseDBImporter:
                         security_violation=True
                     )
             
-            scope_row_count = operation.get("ScopeRowCount", 0)
-            
             # Execute operations safely
             if drop_sql:
                 await asyncio.get_event_loop().run_in_executor(
@@ -531,7 +525,7 @@ class SecureBaseDBImporter:
                 # Get the JOIN criteria and append to SELECT INTO statement
                 join_sql = operation.get("Joins", "")
                 full_sql = f"{select_sql} {join_sql}"
-    
+
                 # Execute the complete SQL with joins
                 await asyncio.get_event_loop().run_in_executor(
                     None,
@@ -559,18 +553,33 @@ class SecureBaseDBImporter:
                     f"TablesToConvert_{self.DB_TYPE}" if self.DB_TYPE != "Justice" else "TablesToConvert"
                 )
                 
-                # CRITICAL FIX: Use direct SQL with string formatting for this specific update
-                # This avoids parameter binding issues with pyodbc
-                update_sql = sqlalchemy.text(
-                    f"UPDATE {self.settings.mssql_target_db_name}.dbo.{tables_table} "
-                    f"SET ScopeRowCount = {inserted_count} WHERE RowID = {row_id}"
-                )
-                
-                await asyncio.get_event_loop().run_in_executor(
-                    None,
-                    lambda: conn.execute(update_sql)
-                )
-                scope_row_count = inserted_count
+                # Use this direct approach:
+                raw_update_sql = f"UPDATE {self.settings.mssql_target_db_name}.dbo.{tables_table} SET ScopeRowCount = {inserted_count} WHERE RowID = {row_id}"
+                logger.debug(f"Trying to execute raw SQL: {raw_update_sql}")
+
+                try:
+                    # Method 1: Get the raw DBAPI connection directly
+                    raw_conn = conn.connection.connection  # Get the raw pyodbc connection
+                    cursor = raw_conn.cursor()
+                    cursor.execute(raw_update_sql)
+                    cursor.close()
+                    raw_conn.commit()
+                    logger.debug(f"Successfully updated row count to {inserted_count} for RowID {row_id} using raw connection")
+                except Exception as e1:
+                    logger.debug(f"Raw connection method failed: {e1}")
+                    try:
+                        # Method 2: Use SQLAlchemy's text() with no parameterization
+                        stmt = sqlalchemy.text(raw_update_sql).execution_options(autocommit=True)
+                        conn.execute(stmt)
+                        logger.debug(f"Successfully updated row count to {inserted_count} for RowID {row_id} using text with autocommit")
+                    except Exception as e2:
+                        logger.debug(f"Text with autocommit method failed: {e2}")
+                        try:
+                            # Method 3: Last resort - direct execution of SQL string
+                            result = conn.execute(raw_update_sql)
+                            logger.debug(f"Successfully updated row count to {inserted_count} for RowID {row_id} using direct execution")
+                        except Exception as e3:
+                            logger.error(f"All update methods failed. Errors: 1) {e1}, 2) {e2}, 3) {e3}")
 
             # Commit the transaction
             await asyncio.get_event_loop().run_in_executor(
@@ -761,7 +770,6 @@ class SecureBaseDBImporter:
     async def _fetch_table_operations_secure(self, conn: Any) -> List[Dict[str, Any]]:
         """Fetch table operations securely. To be implemented by subclasses."""
         raise NotImplementedError("Subclasses must implement _fetch_table_operations_secure()")
-
 
 # Example usage
 async def main():
