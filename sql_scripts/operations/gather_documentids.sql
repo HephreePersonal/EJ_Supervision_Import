@@ -1,9 +1,5 @@
-/*
-	'Bonds','Case','Clinical Screening','Criminal Disposition Event','Event','Hearings','Jailing','Needs Assessment','Party','Plea Event','Pre-Trial Interview','PSI','Referral','Risk Assessment','Sentence Event','Supervision','Supervision Contacts','Warrants',
-*/
-DROP TABLE IF EXISTS {{DB_NAME}}.dbo.DocumentsToConvert;
-
-
+	DROP TABLE IF EXISTS {{DB_NAME}}.dbo.DocumentsToConvert
+GO
 	SELECT
 		 A.DocumentID
 		,B.ParentTypeID
@@ -220,4 +216,5 @@ UNION
 			-- Only Documents attached to Warrants that are in our scope (note the use of {{DB_NAME}} and not Justice)
 			INNER JOIN {{DB_NAME}}.dbo.Wrnt C WITH (NOLOCK) ON A.ParentID=C.WarrantID
 	WHERE
-		B.[Description]='Warrants';
+		B.[Description]='Warrants'
+GO

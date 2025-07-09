@@ -1,0 +1,196 @@
+def run_sql_step(
+    conn: Any, name: str, sql: str, timeout: int = ETLConstants.DEFAULT_SQL_TIMEOUT
+) -> Optional[List[Any]]:
+    logger.info(f"Starting step: {name}")
+    start_time = time.time()
+    try:
+        # SQLAlchemy connection
+        if hasattr(conn, "execute") and not hasattr(conn, "cursor"):
+            result = conn.execute(sqlalchemy.text(sql))
+            try:
+                results = result.fetchall()
+                logger.info(f"{name}: Retrieved {len(results)} rows")
+            except Exception:
+                results = None
+                logger.info(f"{name}: Statement executed (no results to fetch)")
+            elapsed = time.time() - start_time
+            logger.info(f"Completed step: {name} in {elapsed:.2f} seconds")
+            record_success()
+            record_migration(conn, name)
+            return results
+        # DB-API connection
+        else:
+            with conn.cursor() as cursor:
+                cursor.execute(f"SET LOCK_TIMEOUT {timeout * 1000}")
+                cursor.execute(sql)
+                try:
+                    results = cursor.fetchall()
+                    logger.info(f"{name}: Retrieved {len(results)} rows")
+                except Exception:
+                    results = None
+                    logger.info(f"{name}: Statement executed (no results to fetch)")
+            elapsed = time.time() - start_time
+            logger.info(f"Completed step: {name} in {elapsed:.2f} seconds")
+            record_success()
+            record_migration(conn, name)
+            return results
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"Error executing step {name}: {e}. SQL: {sql}")
+        logger.info(f"Step {name} failed after {elapsed:.2f} seconds")
+        record_failure()
+        raise SQLExecutionError(sql, e, table_name=name)
+def run_sql_step_with_retry(
+    conn: Any,
+    name: str,
+    sql: str,
+    timeout: int = ETLConstants.DEFAULT_SQL_TIMEOUT,
+    max_retries: int = ETLConstants.MAX_RETRY_ATTEMPTS,
+) -> Optional[List[Any]]:
+    """Execute a SQL step with retry logic for transient ``pyodbc.Error`` failures.
+
+    Timeout and deadlock errors trigger exponential backoff retries.
+    """
+
+    for attempt in range(max_retries):
+        try:
+            return run_sql_step(conn, name, sql, timeout)
+        except SQLExecutionError as exc:
+            import pyodbc  # Imported lazily for tests that stub this module
+
+            if not isinstance(exc.original_error, pyodbc.Error):
+                raise
+
+            if attempt == max_retries - 1:
+                raise
+
+            err_str = str(exc.original_error).lower()
+            if "timeout" in err_str:
+                logger.warning(
+                    f"Timeout on attempt {attempt + 1} for {name}, retrying..."
+                )
+            elif "deadlock" in err_str:
+                logger.warning(
+                    f"Deadlock on attempt {attempt + 1} for {name}, retrying..."
+                )
+
+            time.sleep(2**attempt)
+def run_sql_script(
+    conn: Any, name: str, sql: str, timeout: int = ETLConstants.DEFAULT_SQL_TIMEOUT, raw_execution: bool = False
+) -> None:
+    """Execute a multi-statement SQL script."""
+    logger.info(f"Starting script: {name}")
+    ensure_version_table(conn)
+    if has_migration(conn, name):
+        logger.info(f"Skipping script {name}: already applied")
+        return
+    
+    start_time = time.time()
+    try:
+        # If raw_execution is True, execute the entire SQL as-is
+        if raw_execution:
+            logger.info(f"Executing entire SQL script as single statement (raw mode)")
+            logger.debug(f"Script content (first 500 chars): {sql[:500]}...")
+            
+            # SQLAlchemy connection
+            if hasattr(conn, "execute") and not hasattr(conn, "cursor"):
+                conn.execute(sqlalchemy.text(sql))
+                conn.commit()
+            # DB-API connection
+            else:
+                with conn.cursor() as cursor:
+                    cursor.execute(f"SET LOCK_TIMEOUT {timeout * 1000}")
+                    cursor.execute(sql)
+                    conn.commit()
+            
+            elapsed = time.time() - start_time
+            logger.info(f"Completed raw script: {name} in {elapsed:.2f} seconds")
+            record_success()
+            record_migration(conn, name)
+            return
+        
+        # Original batch processing logic continues here...
+        go_batches = re.split(r'(?:^|\n)\s*GO\s*(?:\r?\n|$)', sql, flags=re.IGNORECASE | re.MULTILINE)
+        
+        # Debug logging to see how the SQL is being split
+        logger.info(f"SQL script split into {len(go_batches)} batches")
+        
+        total_statements = 0
+
+        # SQLAlchemy connection
+        if hasattr(conn, "execute") and not hasattr(conn, "cursor"):
+            for batch_idx, batch in enumerate(go_batches):
+                if not batch.strip():
+                    logger.debug(f"Skipping empty batch {batch_idx + 1}")
+                    continue
+                    
+                # Log BEFORE execution with actual timing
+                logger.info(f"Executing batch {batch_idx + 1} of {len(go_batches)} at {time.strftime('%H:%M:%S')}")
+                
+                # Execute the entire batch as a single statement
+                batch_sql = batch.strip()
+                if batch_sql and not batch_sql.startswith("--"):
+                    try:
+                        logger.debug(f"Batch {batch_idx + 1} SQL (first 200 chars): {batch_sql[:200]}...")
+                        
+                        # Execute and commit immediately
+                        conn.execute(sqlalchemy.text(batch_sql))
+                        conn.commit()
+                        
+                        logger.info(f"Completed batch {batch_idx + 1} successfully at {time.strftime('%H:%M:%S')}")
+                        total_statements += 1
+                        
+                        # Add a small delay to ensure proper sequencing
+                        time.sleep(0.1)
+                        
+                    except Exception as e:
+                        logger.error(f"Error executing batch {batch_idx + 1}: {e}")
+                        logger.error(f"Batch SQL: {batch_sql}")
+                        raise SQLExecutionError(batch_sql, e, table_name=name)
+                
+        # DB-API connection
+        else:
+            with conn.cursor() as cursor:
+                # Set the query timeout
+                cursor.execute(f"SET LOCK_TIMEOUT {timeout * 1000}")
+
+                for batch_idx, batch in enumerate(go_batches):
+                    if not batch.strip():
+                        logger.debug(f"Skipping empty batch {batch_idx + 1}")
+                        continue
+                        
+                    # Log BEFORE execution with actual timing
+                    logger.info(f"Executing batch {batch_idx + 1} of {len(go_batches)} at {time.strftime('%H:%M:%S')}")
+                    
+                    # Execute the entire batch as a single statement
+                    batch_sql = batch.strip()
+                    if batch_sql and not batch_sql.startswith("--"):
+                        try:
+                            logger.debug(f"Batch {batch_idx + 1} SQL (first 200 chars): {batch_sql[:200]}...")
+                            
+                            cursor.execute(batch_sql)
+                            conn.commit()
+                            
+                            logger.info(f"Completed batch {batch_idx + 1} successfully at {time.strftime('%H:%M:%S')}")
+                            total_statements += 1
+                            
+                            # Add a small delay to ensure proper sequencing
+                            time.sleep(0.1)
+                            
+                        except Exception as e:
+                            logger.error(f"Error executing batch {batch_idx + 1}: {e}")
+                            logger.error(f"Batch SQL: {batch_sql}")
+                            raise SQLExecutionError(batch_sql, e, table_name=name)
+
+        elapsed = time.time() - start_time
+        logger.info(f"Completed script: {name} - executed {total_statements} batches in {elapsed:.2f} seconds")
+        record_success()
+        record_migration(conn, name)
+    except SQLExecutionError:
+        raise
+    except Exception as e:
+        elapsed = time.time() - start_time
+        logger.error(f"Error in script {name}: {e}")
+        logger.info(f"Script {name} failed after {elapsed:.2f} seconds")
+        record_failure()
+        raise SQLExecutionError(sql, e, table_name=name)

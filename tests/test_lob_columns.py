@@ -58,6 +58,10 @@ if "pydantic" not in sys.modules:
     pd_mod.BaseSettings = _BaseSettings
     pd_mod.DirectoryPath = str
     pd_mod.Field = lambda *a, **k: None
+    class _SecretStr(str):
+        def get_secret_value(self):
+            return str(self)
+    pd_mod.SecretStr = _SecretStr
     def _validator(*a, **k):
         def dec(func):
             return func

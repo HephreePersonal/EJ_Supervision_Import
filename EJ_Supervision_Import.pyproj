@@ -29,13 +29,13 @@
     <Compile Include="03_FinancialDB_Import.py" />
     <Compile Include="03_FinancialDB_Import_Secure.py" />
     <Compile Include="04_LOBColumns.py" />
-    <Compile Include="config\secure_settings.py" />
+    <Compile Include="config\run_etl.py" />
     <Compile Include="config\settings.py" />
     <Compile Include="config\__init__.py" />
+    <Compile Include="db\connections.py" />
     <Compile Include="db\health.py" />
     <Compile Include="db\migrations.py" />
     <Compile Include="db\mssql.py" />
-    <Compile Include="db\mysql.py" />
     <Compile Include="db\__init__.py" />
     <Compile Include="etl\base_importer.py" />
     <Compile Include="etl\core.py" />
@@ -65,6 +65,7 @@
     <Compile Include="tests\__init__.py" />
     <Compile Include="utils\etl_helpers.py" />
     <Compile Include="utils\logging_helper.py" />
+    <Compile Include="utils\progress_tracker.py" />
     <Compile Include="utils\sql_security.py" />
     <Compile Include="utils\__init__.py" />
   </ItemGroup>
@@ -92,7 +93,7 @@
     <Content Include="code_review\01_plan.txt" />
     <Content Include="code_review\03_completed.txt" />
     <Content Include="config\secure_config.json" />
-    <Content Include="config\values.json" />
+    <Content Include="config\poopoo.json" />
     <Content Include="LICENSE.txt" />
     <Content Include="README.md" />
     <Content Include="README_SECURE_IMPLEMENTATION.md" />

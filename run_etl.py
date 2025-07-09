@@ -1,12 +1,4 @@
-
-"""Graphical wrapper to run the ETL scripts sequentially.
-
-This module provides a small Tk based application that builds a SQL Server
-connection string and launches each of the ETL scripts.  It can also be used in
-headless mode by calling :func:`run_sequential_etl` with an environment
-dictionary.  The UI exposes the most common configuration options such as the
-CSV directory and whether empty tables should be processed.
-"""
+"""Graphical wrapper to run the ETL scripts sequentially."""
 
 import os
 import sys
@@ -22,15 +14,18 @@ import pyodbc
 import queue
 from datetime import datetime
 
+# Remove the old migration call
+# from config.settings import migrate_existing_configuration
+# migrate_existing_configuration()
+
 from etl.runner import (
     SCRIPTS,
     run_sequential_etl,
     run_script,
 )
 
-# Use importlib.resources so the config file can be bundled inside an executable
-CONFIG_FILE = str(resources.files("config").joinpath("values.json"))
-# Add this code to run_etl.py to make it work with our new modular structure
+# Use the simplified config system
+from config.settings import get_settings, save_settings, load_config_from_file, save_config_to_file
 
 
 class App(tk.Tk):
@@ -39,7 +34,7 @@ class App(tk.Tk):
         super().__init__()
         self.title("EJ Supervision Importer")
         self.resizable(True, True)
-        self.minsize(900, 700)  # Increased height for better visibility
+        self.minsize(900, 700)
         self.conn_str = None
         self.csv_dir = ""
         self.config_values = self._load_config()
@@ -68,45 +63,66 @@ class App(tk.Tk):
         self._schedule_auto_clear()
     
     def _load_config(self):
-        """Load configuration from JSON file if it exists"""
+        """Load configuration using the simplified system"""
         try:
-            config_path = Path(CONFIG_FILE)
-            if config_path.is_file():
-                with config_path.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    data.setdefault("password", "")
-                    data.setdefault("always_include_tables", [])
-                    return data
+            # Load directly from the JSON file
+            file_config = load_config_from_file()
+            
+            # Start with defaults
+            config = {
+                "driver": "{ODBC Driver 17 for SQL Server}",
+                "server": "",
+                "database": "",
+                "user": "",
+                "password": "",
+                "csv_dir": "",
+                "include_empty_tables": False,
+                "always_include_tables": []
+            }
+            
+            # Update with file config values
+            if file_config:
+                config.update(file_config)
+                # Handle both old and new CSV directory keys
+                if "ej_csv_dir" in file_config:
+                    config["csv_dir"] = file_config["ej_csv_dir"]
+        
+            # Store always_include_tables as instance attribute
+            self.always_include_tables = config.get("always_include_tables", [])
+            
+            return config
+            
         except Exception as e:
             logger.error(f"Error loading config: {e}")
-        return {
-            "driver": "",
-            "server": "",
-            "database": "",
-            "user": "",
-            "password": "",
-            "csv_dir": "",
-            "include_empty_tables": False,
-            "always_include_tables": []
-        }
-    
+            self.always_include_tables = []
+            return {
+                "driver": "{ODBC Driver 17 for SQL Server}",
+                "server": "",
+                "database": "",
+                "user": "",
+                "password": "",
+                "csv_dir": "",
+                "include_empty_tables": False,
+                "always_include_tables": []
+            }
+
     def _save_config(self):
-        """Save current configuration to JSON file"""
-        config = App._load_config(self)
-        config.update({
+        """Save current configuration using the simplified system"""
+        # Build the complete config object
+        config = {
             "driver": self.entries["driver"].get(),
             "server": self.entries["server"].get(),
             "database": self.entries["database"].get(),
             "user": self.entries["user"].get(),
-            "csv_dir": self.csv_dir_var.get(),
+            "password": self.entries["password"].get(),
+            "ej_csv_dir": self.csv_dir_var.get(),
             "include_empty_tables": self.include_empty_var.get(),
-        })
+            "always_include_tables": getattr(self, 'always_include_tables', [])
+        }
         
         try:
-            config_path = Path(CONFIG_FILE)
-            config_path.parent.mkdir(parents=True, exist_ok=True)
-            with config_path.open("w", encoding="utf-8") as f:
-                json.dump(config, f, indent=2)
+            # Save directly to JSON file
+            save_config_to_file(config)
         except Exception as e:
             logger.error(f"Error saving config: {e}")
     
@@ -229,6 +245,11 @@ class App(tk.Tk):
         user = self.entries["user"].get()
         password = self.entries["password"].get()
 
+        if not server:
+            raise ValueError("Server name is required")
+        if not database:
+            raise ValueError("Database name is required")
+
         parts = [f"DRIVER={driver}", f"SERVER={server}"]
         if database:
             parts.append(f"DATABASE={database}")
@@ -246,7 +267,7 @@ class App(tk.Tk):
             return
         try:
             pyodbc.connect(conn_str, timeout=5)
-        except Exception as exc:
+        except pyodbc.Error as exc:
             messagebox.showerror("Connection Failed", str(exc))
             return
 
@@ -325,7 +346,6 @@ class App(tk.Tk):
             self.update_queue,
             self.status_queue,
         )
-        
     
     def _process_queues(self):
         """Process updates from the runner threads."""

@@ -137,7 +137,7 @@ The secure system tracks:
 3. **Connection String Not Found**
    ```bash
    # Store connection string manually
-   python -c "from config.secure_settings import SecretManager; SecretManager().store_secret('mssql_connection', 'your_connection_string')"
+   python -c "from config.settings import SecretManager; SecretManager().store_secret('mssql_connection', 'your_connection_string')"
    ```
 
 4. **High Memory Usage**
@@ -216,7 +216,7 @@ If issues occur after migration:
    rm config/secure_config.json
    
    # Clear keyring entries
-   python -c "from config.secure_settings import SecretManager; SecretManager().delete_secret('mssql_connection')"
+   python -c "from config.settings import SecretManager; SecretManager().delete_secret('mssql_connection')"
    ```
 
 3. **Use Legacy System**
@@ -225,4 +225,9 @@ If issues occur after migration:
    python 01_JusticeDB_Import.py
    ```
 
-## Fu
+## Future Enhancements
+
+The secure ETL framework will continue to evolve. Planned improvements include
+additional SQL validation heuristics, integration with cloud-based secret
+management services, and automated security auditing. Community feedback and
+contributions are welcome as we refine these features.

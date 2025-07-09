@@ -1,12 +1,11 @@
--------------------------------------------------------------------------------------------------------------------
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.SUPVERISION_ALL_CASES;
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.CasesToConvert;
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.ChargesToConvert;
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.PartiesToConvert;
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.WarrantsToConvert;
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.HearingsToConvert;
-	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.EventsToConvert;
--------------------------------------------------------------------------------------------------------------------
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.SUPVERISION_ALL_CASES
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.CasesToConvert
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.ChargesToConvert
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.PartiesToConvert
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.WarrantsToConvert
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.HearingsToConvert
+	DROP TABLE IF EXISTS {{DB_NAME}}.DBO.EventsToConvert
+GO
 	SELECT DISTINCT
 		  S.CaseID AS SUPERVISION_CASEID
 		 ,CAHSUP.CaseNbr AS SUPERVISION_CASENUMBER
@@ -29,12 +28,28 @@
 			LEFT JOIN Justice.DBO.CaseAssignHist CAHCRT WITH (NOLOCK) ON CRTCS.CaseAssignmentHistoryIDCur=CAHCRT.CaseAssignmentHistoryID
 			LEFT JOIN Justice.DBO.UCODE UC2 WITH (NOLOCK) ON CRTCS.CaseUTypeID=UC2.CodeID
 	ORDER BY 
-		S.CaseID,CAHCRT.CaseID;
--------------------------------------------------------------------------------------------------------------------
-		SELECT SUPERVISION_CASEID AS CaseID,'SUPCASEHDR' AS TYPEOFCASE INTO {{DB_NAME}}.DBO.CasesToConvert FROM {{DB_NAME}}.DBO.SUPVERISION_ALL_CASES GROUP BY SUPERVISION_CASEID
+		S.CaseID,CAHCRT.CaseID
+GO
+		SELECT 
+			 SUPERVISION_CASEID AS CaseID
+			,'SUPCASEHDR' AS TYPEOFCASE 
+		INTO {{DB_NAME}}.DBO.CasesToConvert 
+		FROM 
+			{{DB_NAME}}.DBO.SUPVERISION_ALL_CASES 
+		WHERE 
+			SUPERVISION_CASEID IS NOT NULL
+		GROUP BY 
+			SUPERVISION_CASEID
 	UNION
-		SELECT COURTCASE_CASEID AS CaseID,'CLKCASEHDR' AS TYPEOFCASE FROM {{DB_NAME}}.DBO.SUPVERISION_ALL_CASES WHERE COURTCASE_CASEID NOT IN (SELECT DISTINCT SUPERVISION_CASEID FROM {{DB_NAME}}.DBO.SUPVERISION_ALL_CASES) GROUP BY COURTCASE_CASEID;
--------------------------------------------------------------------------------------------------------------------
-	ALTER TABLE {{DB_NAME}}.DBO.CasesToConvert ALTER COLUMN CaseID INT NOT NULL;
-	ALTER TABLE {{DB_NAME}}.DBO.CasesToConvert ADD CONSTRAINT PK_CaseID PRIMARY KEY (CaseID);
-	-------------------------------------------------------------------------------------------------------------------
+		SELECT 
+			 COURTCASE_CASEID
+			,'CLKCASEHDR' AS TYPEOFCASE 
+		FROM 
+			{{DB_NAME}}.DBO.SUPVERISION_ALL_CASES 
+		WHERE 
+			COURTCASE_CASEID IS NOT NULL
+GO
+	ALTER TABLE {{DB_NAME}}.DBO.CasesToConvert ALTER COLUMN CaseID INT NOT NULL
+GO
+	ALTER TABLE {{DB_NAME}}.DBO.CasesToConvert ADD CONSTRAINT PK_CaseID PRIMARY KEY (CaseID)
+GO

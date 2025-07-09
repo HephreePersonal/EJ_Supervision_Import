@@ -121,7 +121,7 @@ python 01_JusticeDB_Import_Secure.py
 ej-supervision-import/
 ├── config/                 # Configuration files
 │   ├── settings.py        # Application settings
-│   ├── secure_settings.py # Secure configuration manager
+│   ├── secure_config.json # Stored non-sensitive defaults
 │   └── values.json        # Legacy configuration
 ├── db/                    # Database connectivity
 │   ├── mssql.py          # SQL Server connections
@@ -299,6 +299,9 @@ See [README_SECURE_IMPLEMENTATION.md](README_SECURE_IMPLEMENTATION.md) for detai
    - Increase `SQL_TIMEOUT`
    - Check for blocking queries
    - Optimize source database indexes
+
+5. **ScopeRowCount Update Error**
+   - Versions prior to 1.5.1 could fail with a parameter count mismatch while updating `ScopeRowCount`, resulting in a `COUNT field incorrect or syntax error` during table conversions. Update to the latest code to resolve this issue.
 
 ### Debug Mode
 Enable verbose logging:

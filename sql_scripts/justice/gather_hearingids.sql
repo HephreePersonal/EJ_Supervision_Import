@@ -1,4 +1,3 @@
---------------------------------------------------------------------------------------------------
 WITH CTE_HEARINGS AS
 (
 		SELECT
@@ -26,6 +25,6 @@ WITH CTE_HEARINGS AS
 		CTE_HEARINGS A 
 	GROUP BY 
 		A.HearingID;
---------------------------------------------------------------------------------------------------
+GO
 	ALTER TABLE {{DB_NAME}}.DBO.HearingsToConvert ADD CONSTRAINT HearingID PRIMARY KEY (HearingID);
---------------------------------------------------------------------------------------------------
+GO

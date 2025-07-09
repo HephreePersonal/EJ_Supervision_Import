@@ -1,8 +1,7 @@
-DROP TABLE IF EXISTS {{DB_NAME}}.dbo.FeeInstancesToConvert;
-
+	DROP TABLE IF EXISTS {{DB_NAME}}.dbo.FeeInstancesToConvert
+GO
 	SELECT DISTINCT
 		 FI.FeeInstanceID
-		-- ,'ChargeID' AS Src
 	INTO {{DB_NAME}}.dbo.FeeInstancesToConvert
 	FROM
 		Financial.dbo.FeeInst FI WITH (NOLOCK)
@@ -13,10 +12,10 @@ DROP TABLE IF EXISTS {{DB_NAME}}.dbo.FeeInstancesToConvert;
 UNION
 	SELECT DISTINCT
 		 FI.FeeInstanceID
-		-- ,'CaseID' AS Src
 	FROM
 		Financial.dbo.FeeInst FI WITH (NOLOCK)
 			INNER JOIN Financial.dbo.xFincChrgFeeInst XFCFI WITH (NOLOCK) ON FI.FeeInstanceID=XFCFI.FeeInstanceID
 			INNER JOIN Financial.dbo.FincChrg FC WITH (NOLOCK) ON XFCFI.ChargeID=FC.ChargeID
 			INNER JOIN Financial.dbo.xCaseFincChrg XCFC WITH (NOLOCK) ON FC.ChargeID=XCFC.ChargeID
 			INNER JOIN {{DB_NAME}}.dbo.CasesToConvert CTC WITH (NOLOCK) ON XCFC.CaseID=CTC.CaseID AND CTC.TYPEOFCASE='SUPCASEHDR'
+GO

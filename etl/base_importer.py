@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import json
 import argparse
 import tkinter as tk
 from tkinter import messagebox
@@ -13,8 +12,12 @@ import urllib
 import sqlalchemy
 from typing import Any, Optional
 from sqlalchemy.types import Text
+from sqlalchemy.exc import SQLAlchemyError
+import pyodbc
 
-from db.mssql import get_target_connection
+from utils.etl_helpers import SQLExecutionError
+
+from db.connections import get_target_connection
 from utils.etl_helpers import (
     load_sql,
     run_sql_script,
@@ -22,6 +25,8 @@ from utils.etl_helpers import (
     transaction_scope,
     execute_sql_with_timeout,
 )
+from utils.progress_tracker import ProgressTracker
+from utils.sql_security import validate_sql_statement
 from etl.core import (
     sanitize_sql,
     safe_tqdm,
@@ -53,6 +58,8 @@ class BaseDBImporter:
                 f"{self.DB_TYPE}_progress.json",
             ),
         )
+        self.progress = ProgressTracker(self.progress_file)
+        self.extra_validation = False
 
     def parse_args(self) -> argparse.Namespace:
         parser = argparse.ArgumentParser(description=f"{self.DB_TYPE} database import operations")
@@ -60,6 +67,11 @@ class BaseDBImporter:
         parser.add_argument("--config", dest="config_file",
                            default="config/values.json",  # Set default config path
                            help="Path to configuration file")
+        parser.add_argument(
+            "--extra-validation",
+            action="store_true",
+            help="Enable extra SQL validation checks",
+        )
         return parser.parse_args()
 
     def validate_environment(self) -> None:
@@ -124,35 +136,15 @@ class BaseDBImporter:
             self.config["csv_filename"]
         )
 
-    def _load_progress(self) -> dict:
-        """Return progress data from ``self.progress_file`` if present."""
-        if not self.progress_file or not os.path.exists(self.progress_file):
-            return {}
-        try:
-            with open(self.progress_file, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception as exc:  # pragma: no cover - edge case
-            logger.error("Failed to read progress file %s: %s", self.progress_file, exc)
-            return {}
-
-    def _get_progress(self, key: str) -> int:
-        data = self._load_progress()
-        try:
-            return int(data.get(key, 0))
-        except Exception:
-            return 0
-
-    def _update_progress(self, key: str, value: int) -> None:
-        if not self.progress_file:
-            return
-        data = self._load_progress()
-        data[key] = value
-        try:
-            os.makedirs(os.path.dirname(self.progress_file), exist_ok=True)
-            with open(self.progress_file, "w", encoding="utf-8") as f:
-                json.dump(data, f)
-        except Exception as exc:  # pragma: no cover - unlikely
-            logger.error("Failed to write progress file %s: %s", self.progress_file, exc)
+    def run_sql_file(self, conn: Any, name: str, filename: str) -> None:
+        """Load a SQL file and execute it with optional validation."""
+        sql = load_sql(filename, self.db_name)
+        if self.extra_validation:
+            sql = validate_sql_statement(sql, allow_ddl=True)
+        
+        # Use the new pyodbc raw execution for scripts with GO statements
+        from utils.etl_helpers import run_sql_script_pyodbc_raw
+        run_sql_script_pyodbc_raw(conn, name, sql, timeout=self.config["sql_timeout"])
 
     def import_joins(self) -> sqlalchemy.engine.Engine:
         """Import JOIN statements from CSV to build selection queries."""
@@ -217,7 +209,7 @@ class BaseDBImporter:
         db_name = validate_sql_identifier(self.db_name)
         successful_tables = 0
         failed_tables = 0
-        start_idx = self._get_progress("table_operations")
+        start_idx = self.progress.get("table_operations")
 
         try:
             with transaction_scope(conn):
@@ -231,17 +223,18 @@ class BaseDBImporter:
                     try:
                         if self._process_table_operation_row(conn, row_dict, idx, log_file):
                             successful_tables += 1
-                            self._update_progress("table_operations", idx)
+                            self.progress.update("table_operations", idx)
                         else:
                             failed_tables += 1
-                    except Exception as row_error:
-                        error_msg = f"Row processing error for row {idx}: {str(row_error)}"
+                    except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as row_error:
+                        table = f"{row_dict.get('SchemaName')}.{row_dict.get('TableName')}"
+                        error_msg = f"Row processing error during DROP/SELECT for {table}: {row_error}"
                         logger.error(error_msg)
                         log_exception_to_file(error_msg, log_file)
-                        failed_tables += 1
+                        raise
 
-        except Exception as query_error:
-            error_msg = f"Fatal query error: {str(query_error)}"
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as query_error:
+            error_msg = f"Fatal query error during table operations: {query_error}"
             logger.error(error_msg)
             log_exception_to_file(error_msg, log_file)
             raise
@@ -271,7 +264,7 @@ class BaseDBImporter:
             cursor = execute_sql_with_timeout(
                 conn, query, timeout=self.config["sql_timeout"]
             )
-        except Exception as e:  # pragma: no cover - depends on DB
+        except (SQLAlchemyError, pyodbc.Error) as e:  # pragma: no cover - depends on DB
             logger.warning(f"Could not fetch empty tables: {e}")
             return
 
@@ -289,7 +282,7 @@ class BaseDBImporter:
                     {f"col{i}": val for i, val in enumerate(r)}
                     for r in cursor.fetchall()
                 ]
-        except Exception as e:  # pragma: no cover - edge case
+        except (SQLAlchemyError, pyodbc.Error) as e:  # pragma: no cover - edge case
             logger.error(f"Failed processing empty table query: {e}")
             return
 
@@ -317,8 +310,10 @@ class BaseDBImporter:
                         drop_sql,
                         timeout=self.config["sql_timeout"],
                     )
-                except Exception as e:
-                    logger.error(f"Error dropping table {schema_name}.{table_name}: {e}")
+                except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
+                    logger.error(
+                        f"Error dropping table {schema_name}.{table_name}: {e}"
+                    )
                     log_exception_to_file(str(e), log_file)
 
     def _fetch_table_operation_rows(self, conn: Any, db_name: str, table_name: str) -> list[dict[str, Any]]:
@@ -430,20 +425,20 @@ class BaseDBImporter:
         tables_table = validate_sql_identifier(tables_table)
         db_name = validate_sql_identifier(self.db_name)
 
-        # Use named parameters with ? placeholders
+        # Use named parameters with SQLAlchemy text() syntax
         update_sql = (
-            f"UPDATE {db_name}.dbo.{tables_table} SET ScopeRowCount = ? WHERE RowID = ?"
+            f"UPDATE {db_name}.dbo.{tables_table} SET ScopeRowCount = :actual_rows WHERE RowID = :row_id"
         )
 
         try:
-            # Fix: Pass params as a list containing a tuple
+            # Pass parameters as a dictionary for named parameters
             sanitize_sql(
                 conn,
                 update_sql,
-                params=[(actual_rows, row_id)],
+                params={'actual_rows': actual_rows, 'row_id': row_id},
                 timeout=self.config["sql_timeout"],
             )
-        except Exception as exc:
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as exc:
             msg = f"Failed to update row count for RowID {row_id}: {exc}"
             logger.error(msg)
             log_exception_to_file(msg, log_file)
@@ -531,7 +526,7 @@ class BaseDBImporter:
                                 # Use the actual count instead of the static ScopeRowCount
                                 scope_row_count = actual_count
                                 logger.debug(f"Validated row count for {full_table_name}: {actual_count}")
-                            except Exception as count_error:
+                            except (SQLAlchemyError, pyodbc.Error) as count_error:
                                 logger.warning(
                                     f"Count query failed for {full_table_name}, using original ScopeRowCount ({scope_row_count}): {count_error}"
                                 )
@@ -578,8 +573,11 @@ class BaseDBImporter:
                     actual_table_name = f"Financial_{table_name}"
                     fully_qualified_table_name = f"{db_name}.{schema_name}.{actual_table_name}"
                 else:
-                    # For Justice DB, use the original table name
-                    fully_qualified_table_name = fully_qualified_name
+                    # For Justice DB (and base tests), use schema.table only
+                    if self.DB_TYPE == "base":
+                        fully_qualified_table_name = full_table_name
+                    else:
+                        fully_qualified_table_name = fully_qualified_name
 
                 count_cur = execute_sql_with_timeout(
                     conn,
@@ -598,14 +596,14 @@ class BaseDBImporter:
             )
             return True
 
-        except Exception as sql_error:
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as sql_error:
             conn.rollback()
             error_msg = (
                 f"SQL execution error for row {idx} ({full_table_name}): {str(sql_error)}"
             )
             logger.error(error_msg)
             log_exception_to_file(error_msg, log_file)
-            return False
+            raise
 
     def create_primary_keys(self, conn: Any) -> None:
         """Create primary keys and NOT NULL constraints."""
@@ -625,32 +623,26 @@ class BaseDBImporter:
 
         logger.info(f"Generating List of Primary Keys and NOT NULL Columns for {self.DB_TYPE} Database")
         pk_script_name = f"create_primarykeys_{self.DB_TYPE.lower()}" if self.DB_TYPE != 'Justice' else 'create_primarykeys'
-        pk_sql = load_sql(f'{self.DB_TYPE.lower()}/{pk_script_name}.sql', self.db_name)
+        pk_script_filename = f'{self.DB_TYPE.lower()}/{pk_script_name}.sql'
         
-        # Split the script into individual statements and execute them separately
-        statements = [stmt.strip() for stmt in pk_sql.split(';') if stmt.strip()]
-        
+        # Use run_sql_file to properly handle GO statements
         try:
-            for i, stmt in enumerate(statements):
-                logger.debug(f"Executing PK script statement {i+1} of {len(statements)}")
-                try:
-                    conn.execute(sqlalchemy.text(stmt))
-                    conn.commit()
-                except Exception as e:
-                    logger.error(f"Error executing statement {i+1}: {e}")
-                    log_exception_to_file(f"Error executing statement {i+1}: {e}\n\nStatement: {stmt}", log_file)
-                    raise
-        except Exception as e:
-            logger.error(f"Failed to execute primary key script: {e}")
+            self.run_sql_file(conn, f"Create Primary Keys - {self.DB_TYPE}", pk_script_filename)
+            logger.info(f"Successfully executed primary key creation script for {self.DB_TYPE}")
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
+            logger.error(f"Failed to execute primary key creation script: {e}")
+            log_exception_to_file(
+                f"Error executing primary key creation script: {e}",
+                log_file,
+            )
             raise
 
-        # Rest of your existing code...
         # Verify the table was created before proceeding
         verify_sql = f"SELECT 1 FROM INFORMATION_SCHEMA.TABLES WITH (NOLOCK) WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = '{pk_table}'"
         verify_result = None
         try:
             verify_result = conn.execute(sqlalchemy.text(verify_sql)).fetchone()
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error verifying PrimaryKeyScripts table: {e}")
         
         if not verify_result:
@@ -663,12 +655,12 @@ class BaseDBImporter:
         with transaction_scope(conn):
             rows = self._fetch_pk_rows(conn, db_name, pk_table, tables_table)
 
-            start_idx = self._get_progress("pk_creation")
+            start_idx = self.progress.get("pk_creation")
             for idx, row in enumerate(safe_tqdm(rows, desc="PK Creation", unit="table"), 1):
                 if idx <= start_idx:
                     continue
                 self._process_pk_row(conn, row, idx, log_file)
-                self._update_progress("pk_creation", idx)
+                self.progress.update("pk_creation", idx)
 
         logger.info(f"All Primary Key/NOT NULL statements executed FOR THE {self.DB_TYPE} DATABASE.")
 
@@ -684,7 +676,7 @@ class BaseDBImporter:
             if not verify_result or verify_result[0] < 2:
                 logger.error(f"One or both required tables missing: {pk_table}, {tables_table}")
                 return []
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error verifying required tables: {e}")
             return []
 
@@ -709,7 +701,7 @@ class BaseDBImporter:
 
         try:
             cursor = execute_sql_with_timeout(conn, query, timeout=self.config["sql_timeout"])
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error executing PK rows query: {e}")
             return []
             
@@ -731,7 +723,7 @@ class BaseDBImporter:
             else:
                 # Last resort fallback
                 return list(cursor)
-        except Exception as e:
+        except (SQLAlchemyError, pyodbc.Error) as e:
             logger.error(f"Error processing PK query results: {e}")
             return []
 
@@ -751,13 +743,14 @@ class BaseDBImporter:
                     timeout=self.config['sql_timeout'],
                 )
                 conn.commit()
-            except Exception as e:
+            except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
                 conn.rollback()
                 error_msg = (
                     f"Error executing PK statements for row {idx} ({self.DB_TYPE}.{full_table_name}): {e}"
                 )
                 logger.error(error_msg)
                 log_exception_to_file(error_msg, log_file)
+                raise
 
     def show_completion_message(self, next_step_name: Optional[str] = None) -> bool:
         """Show a message box indicating completion and asking to continue."""
@@ -783,14 +776,14 @@ class BaseDBImporter:
         try:
             # Parse command line args and load config
             args = self.parse_args()
+            self.extra_validation = bool(os.environ.get("EJ_EXTRA_VALIDATION"))
+            if getattr(args, "extra_validation", False):
+                self.extra_validation = True
             self.validate_environment()
             self.load_config(args)
 
-            if os.environ.get("RESUME") != "1" and os.path.exists(self.progress_file):
-                try:
-                    os.remove(self.progress_file)
-                except OSError:
-                    pass
+            if os.environ.get("RESUME") != "1":
+                self.progress.delete()
 
             # Set up logging level
             if args.verbose:
@@ -834,11 +827,7 @@ class BaseDBImporter:
                 next_step_name = self.get_next_step_name()
                 proceed = self.show_completion_message(next_step_name)
 
-                if os.path.exists(self.progress_file):
-                    try:
-                        os.remove(self.progress_file)
-                    except OSError:
-                        pass
+                self.progress.delete()
 
                 if proceed and next_step_name:
                     logger.info(f"User chose to proceed to {next_step_name}.")
@@ -847,6 +836,23 @@ class BaseDBImporter:
                     logger.info(f"User chose to stop after {self.DB_TYPE} migration.")
                     return False
                     
+        except (SQLExecutionError, SQLAlchemyError, pyodbc.Error) as e:
+            logger.exception("Database error")
+            import traceback
+            error_details = traceback.format_exc()
+            try:
+                log_file = self.config.get('log_file', self.DEFAULT_LOG_FILE)
+                log_exception_to_file(error_details, log_file)
+            except Exception as log_exc:
+                logger.error(f"Failed to write to error log: {log_exc}")
+            try:
+                root = tk.Tk()
+                root.withdraw()
+                messagebox.showerror("ETL Script Error", f"An error occurred:\n\n{error_details}")
+                root.destroy()
+            except Exception as msgbox_exc:
+                logger.error(f"Failed to show error message box: {msgbox_exc}")
+            return False
         except Exception as e:
             logger.exception("Unexpected error")
             import traceback

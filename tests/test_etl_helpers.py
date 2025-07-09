@@ -1,54 +1,5 @@
 import pytest
-import sys, types
-
-if "pyodbc" not in sys.modules:
-    class _DummyError(Exception):
-        pass
-    sys.modules["pyodbc"] = types.SimpleNamespace(
-        Error=_DummyError, connect=lambda *a, **k: None
-    )
-
-if "dotenv" not in sys.modules:
-    mod = types.ModuleType("dotenv")
-    mod.load_dotenv = lambda *a, **k: None
-    sys.modules["dotenv"] = mod
-
-if "sqlalchemy" not in sys.modules:
-    sa_mod = types.ModuleType("sqlalchemy")
-    sa_mod.MetaData = lambda *a, **k: None
-    pool_mod = types.ModuleType("pool")
-    pool_mod.NullPool = object
-    sa_mod.pool = pool_mod
-    engine_mod = types.ModuleType("engine")
-    engine_mod.Engine = object
-    engine_mod.Connection = object
-    sa_mod.engine = engine_mod
-    sys.modules["sqlalchemy"] = sa_mod
-    sys.modules["sqlalchemy.pool"] = pool_mod
-    sys.modules["sqlalchemy.engine"] = engine_mod
-
-if "pydantic" not in sys.modules:
-    pd_mod = types.ModuleType("pydantic")
-    class _BaseSettings:
-        def __init__(self, **values):
-            for k, v in values.items():
-                setattr(self, k, v)
-    pd_mod.BaseSettings = _BaseSettings
-    pd_mod.DirectoryPath = str
-    pd_mod.Field = lambda *a, **k: None
-    class _SecretStr(str):
-        def get_secret_value(self):
-            return str(self)
-    pd_mod.SecretStr = _SecretStr
-    def _validator(*a, **k):
-        def dec(func):
-            return func
-        return dec
-    pd_mod.validator = _validator
-    sys.modules["pydantic"] = pd_mod
-    ps_mod = types.ModuleType("pydantic_settings")
-    ps_mod.BaseSettings = _BaseSettings
-    sys.modules["pydantic_settings"] = ps_mod
+import sys
 
 from config import ETLConstants
 from utils.etl_helpers import (
@@ -100,6 +51,14 @@ class DummyConn:
 
     def rollback(self):
         self.rollbacks += 1
+
+
+class DummyConnNoAutocommit(DummyConn):
+    """Dummy connection without an ``autocommit`` attribute."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        del self.autocommit
 
 
 def test_run_sql_step_success():
@@ -191,5 +150,25 @@ def test_transaction_scope_rollback_on_error():
             assert conn.autocommit is False
             raise RuntimeError('boom')
     assert conn.autocommit is True
+    assert conn.commits == 0
+    assert conn.rollbacks == 1
+
+
+def test_transaction_scope_no_autocommit_attribute_commit():
+    conn = DummyConnNoAutocommit()
+    assert not hasattr(conn, 'autocommit')
+    with transaction_scope(conn):
+        assert not hasattr(conn, 'autocommit')
+    assert not hasattr(conn, 'autocommit')
+    assert conn.commits == 1
+    assert conn.rollbacks == 0
+
+
+def test_transaction_scope_no_autocommit_attribute_rollback():
+    conn = DummyConnNoAutocommit()
+    with pytest.raises(RuntimeError):
+        with transaction_scope(conn):
+            raise RuntimeError('boom')
+    assert not hasattr(conn, 'autocommit')
     assert conn.commits == 0
     assert conn.rollbacks == 1

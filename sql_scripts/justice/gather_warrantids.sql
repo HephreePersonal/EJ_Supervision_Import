@@ -1,4 +1,3 @@
----------------------------------------------------------------------------------------------------
 WITH CTE_WARRANTS AS (
 						SELECT
 							W.WARRANTID
@@ -32,6 +31,6 @@ WITH CTE_WARRANTS AS (
 							CTE_WARRANTS S
 						GROUP BY 
 							S.WarrantID;
----------------------------------------------------------------------------------------------------
+GO
 	ALTER TABLE {{DB_NAME}}.DBO.WarrantsToConvert ADD CONSTRAINT WarrantID PRIMARY KEY (WarrantID);
----------------------------------------------------------------------------------------------------
+GO

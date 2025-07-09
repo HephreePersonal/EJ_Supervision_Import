@@ -1,0 +1,16 @@
+{
+  "driver": "{ODBC Driver 17 for SQL Server}",
+  "server": "dc-7373-elpaso-tx-main.cecsly956e2j.us-gov-west-1.rds.amazonaws.com,1433",
+  "database": "ELPaso_TX",
+  "user": "dcMaster",
+  "password": "Eepheng1WiephohCoK",
+  "csv_dir": "C:/Users/jeff.reichert/OneDrive - Tyler Technologies, Inc/Documents/GitHub/tx_elpaso_7373/Pre-DMS",
+  "include_empty_tables": false,
+  "always_include_tables": [
+    "Justice.dbo.xPartyGrpCase",
+    "Justice.dbo.xPartyGrpParty",
+    "Justice.dbo.SupClinicalScreening",
+    "Justice.dbo.SupPartyReferral",
+    "Justice.dbo.SupervisionRec"
+  ]
+}

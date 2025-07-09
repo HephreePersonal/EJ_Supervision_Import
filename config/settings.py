@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import json
+import logging
 import os
 from pathlib import Path
-from typing import Optional
-
+from typing import Dict, Any, Optional, Union
+from functools import lru_cache
 from dotenv import load_dotenv
-
+from pydantic import field_validator, ConfigDict, Field, SecretStr, DirectoryPath
 from pydantic_settings import BaseSettings
-from pydantic import DirectoryPath, Field, SecretStr, validator
 
+logger = logging.getLogger(__name__)
 
 # Load environment variables from a .env file if present.
 load_dotenv()
-
 
 def parse_database_name(conn_str: str | None) -> Optional[str]:
     """Extract the database name from an ODBC connection string."""
@@ -23,112 +24,114 @@ def parse_database_name(conn_str: str | None) -> Optional[str]:
             return part.split("=", 1)[1]
     return None
 
-
 class ETLConstants:
     """Default values used across the ETL pipeline."""
-
-    #: Default timeout for SQL statements in seconds
     DEFAULT_SQL_TIMEOUT = 300
-
-    #: Default number of rows to insert per batch when doing bulk inserts
     DEFAULT_BULK_INSERT_BATCH_SIZE = 100
-
-    #: Maximum number of retry attempts for transient failures
     MAX_RETRY_ATTEMPTS = 3
-
-    #: Default connection timeout when establishing database connections
     CONNECTION_TIMEOUT = 30
-
-    #: Default number of rows per chunk when reading large CSV files
     DEFAULT_CSV_CHUNK_SIZE = 50000
 
-
 class Settings(BaseSettings):
-    """Application configuration loaded from environment variables."""
+    """Application configuration."""
 
-    mssql_source_conn_str: Optional[SecretStr] = Field(default=None, env="MSSQL_SOURCE_CONN_STR")
-    mssql_target_conn_str: SecretStr = Field(..., env="MSSQL_TARGET_CONN_STR")
-    mssql_target_db_name: Optional[str] = Field(default=None, env="MSSQL_TARGET_DB_NAME")
-
-    ej_csv_dir: DirectoryPath = Field(..., env="EJ_CSV_DIR")
-    ej_log_dir: Path = Field(default_factory=Path.cwd, env="EJ_LOG_DIR")
-
-    sql_timeout: int = Field(ETLConstants.DEFAULT_SQL_TIMEOUT, env="SQL_TIMEOUT")
-    include_empty_tables: bool = Field(False, env="INCLUDE_EMPTY_TABLES")
-    csv_chunk_size: int = Field(ETLConstants.DEFAULT_CSV_CHUNK_SIZE, env="CSV_CHUNK_SIZE")
-
-
-    mysql_host: Optional[str] = Field(default=None, env="MYSQL_HOST")
-    mysql_user: Optional[str] = Field(default=None, env="MYSQL_USER")
-    mysql_password: Optional[SecretStr] = Field(default=None, env="MYSQL_PASSWORD")
-    mysql_database: Optional[str] = Field(default=None, env="MYSQL_DATABASE")
-    mysql_port: int = Field(3306, env="MYSQL_PORT")
-
-    db_pool_size: int = Field(5, env="DB_POOL_SIZE")
-    db_max_overflow: int = Field(10, env="DB_MAX_OVERFLOW")
-    db_pool_timeout: int = Field(30, env="DB_POOL_TIMEOUT")
-
-    @validator("mssql_target_conn_str")
-    def _require_target_conn_str(cls, v: SecretStr) -> SecretStr:
-        if not v or not v.get_secret_value():
-            raise ValueError("MSSQL_TARGET_CONN_STR is required")
-        return v
-
-    @validator("mssql_target_db_name", always=True)
-    def _derive_db_name(cls, v: Optional[str], values: dict) -> Optional[str]:
-        conn = values.get("mssql_target_conn_str")
-        secret = conn.get_secret_value() if isinstance(conn, SecretStr) else conn
-        return v or parse_database_name(secret)
-
-    @validator("sql_timeout")
-    def _check_timeout(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("SQL_TIMEOUT must be positive")
-        return v
-
-    @validator("csv_chunk_size")
-    def _check_chunk_size(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("CSV_CHUNK_SIZE must be positive")
-        return v
-
-    @validator("db_pool_size")
-    def _check_pool_size(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("DB_POOL_SIZE must be positive")
-        return v
-
-    @validator("db_max_overflow")
-    def _check_max_overflow(cls, v: int) -> int:
-        if v < 0:
-            raise ValueError("DB_MAX_OVERFLOW cannot be negative")
-        return v
-
-    @validator("db_pool_timeout")
-    def _check_pool_timeout(cls, v: int) -> int:
-        if v <= 0:
-            raise ValueError("DB_POOL_TIMEOUT must be positive")
-        return v
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="allow"
+    )
+    
+    # Database connection fields
+    driver: Optional[str] = None
+    server: Optional[str] = None
+    database: Optional[str] = None
+    user: Optional[str] = None
+    password: Optional[str] = None
+    
+    # File paths
+    ej_csv_dir: Optional[str] = None
+    ej_log_dir: Optional[str] = None
+    
+    # Feature flags
+    include_empty_tables: bool = False
+    skip_pk_creation: bool = False
+    always_include_tables: list[str] = Field(default_factory=list)
+    
+    # Performance settings
+    sql_timeout: int = Field(default=ETLConstants.DEFAULT_SQL_TIMEOUT)
+    csv_chunk_size: int = Field(default=ETLConstants.DEFAULT_CSV_CHUNK_SIZE)
+    max_retry_attempts: int = Field(default=ETLConstants.MAX_RETRY_ATTEMPTS)
+    connection_timeout: int = Field(default=ETLConstants.CONNECTION_TIMEOUT)
+    
     @property
-    def mysql_conn_dict(self) -> dict[str, Optional[str]]:
-        """Return MySQL connection parameters as a dictionary."""
-        password = self.mysql_password.get_secret_value() if self.mysql_password else None
-        if not all([self.mysql_host, self.mysql_user, password, self.mysql_database]):
-            return {}
-        return {
-            "host": self.mysql_host,
-            "user": self.mysql_user,
-            "password": password,
-            "database": self.mysql_database,
-            "port": self.mysql_port,
-        }
+    def mssql_target_conn_str(self) -> Optional[str]:
+        """Build connection string from components."""
+        if not all([self.driver, self.server, self.database, self.user]):
+            return None
+        
+        conn_str = f"DRIVER={self.driver};SERVER={self.server};DATABASE={self.database};UID={self.user}"
+        if self.password:
+            conn_str += f";PWD={self.password}"
+        return conn_str
+    
+    @property
+    def mssql_target_db_name(self) -> Optional[str]:
+        """Get the database name."""
+        return self.database
 
+def load_config_from_file(config_path: str = "config/secure_config.json") -> Dict[str, Any]:
+    """Load configuration from JSON file."""
+    path = Path(config_path)
+    if not path.exists():
+        return {}
+    
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Error loading config file {path}: {e}")
+        return {}
 
-# Instantiate once at import time
-settings = Settings()
+def save_config_to_file(config: Dict[str, Any], config_path: str = "config/secure_config.json") -> None:
+    """Save configuration to JSON file."""
+    path = Path(config_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        with open(path, 'w') as f:
+            json.dump(config, f, indent=2)
+        logger.info(f"Configuration saved to {path}")
+    except Exception as e:
+        logger.error(f"Error saving config file {path}: {e}")
+
+def get_settings() -> Settings:
+    """Get settings loaded from config file."""
+    config_data = load_config_from_file()
+    return Settings(**config_data)
+
+def save_settings(settings_obj: Settings) -> None:
+    """Save settings to config file."""
+    # Convert settings to dict, excluding None values
+    config_data = {}
+    for field_name, field_value in settings_obj.model_dump().items():
+        if field_value is not None:
+            config_data[field_name] = field_value
+    
+    save_config_to_file(config_data)
+
+# Create settings instance
+settings = get_settings()
+
+# For backward compatibility
+def get_secure_settings() -> Settings:
+    """Alias for get_settings."""
+    return get_settings()
+
+# Legacy aliases
+SecretManager = None
+ConfigurationManager = None
+
+def migrate_existing_configuration():
+    """No-op for backward compatibility."""
+    pass

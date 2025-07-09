@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Migration script to upgrade existing ETL system to secure version.
 
 This script helps migrate from the original ETL system to the enhanced secure version
@@ -18,7 +18,7 @@ import argparse
 # Add the project root to path so we can import our modules
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config.secure_settings import ConfigurationManager, SecretManager
+from config.settings import ConfigurationManager, SecretManager
 from utils.sql_security import SQLSecurityValidator
 
 # Setup logging
@@ -307,8 +307,8 @@ class ETLSystemMigration:
         
         try:
             # Test secure configuration loading
-            from config.secure_settings import get_secure_settings
-            settings = get_secure_settings()
+            from config.settings import get_settings
+            settings = get_settings()
             
             # Validate key settings
             if not settings.ej_csv_dir or not settings.ej_csv_dir.exists():

@@ -1,4 +1,10 @@
-"""Core ETL utilities shared across all database import scripts."""
+"""Core ETL utilities shared across all database import scripts.
+
+These helpers provide environment validation, configuration loading and
+SQL execution utilities used by the importer modules.  For an overview of
+the entire ETL pipeline and configuration options see the ``Architecture``
+and ``Configuration`` sections of ``README.md``.
+"""
 
 from __future__ import annotations
 
@@ -26,7 +32,11 @@ class ConfigError(Exception):
 
 
 def validate_environment(required_vars: Dict[str, str], optional_vars: Dict[str, str]) -> None:
-    """Validate environment variables with custom requirements."""
+    """Validate environment variables against required and optional sets.
+
+    Refer to the ``Environment Variables`` table in ``README.md`` for a
+    description of available settings.
+    """
     # Check required vars
     missing = []
     for var, desc in required_vars.items():
@@ -51,7 +61,11 @@ def validate_environment(required_vars: Dict[str, str], optional_vars: Dict[str,
         raise EnvironmentError(f"EJ_CSV_DIR directory does not exist: {csv_dir}")
 
 def load_config(config_file: str | None = None, default_config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Load configuration from JSON file if provided, otherwise use defaults."""
+    """Load configuration from JSON file or fall back to defaults.
+
+    The expected structure of the configuration file is documented in the
+    ``Configuration`` section of ``README.md``.
+    """
     config: Dict[str, Any] = default_config or {}
     
     if config_file and os.path.exists(config_file):
@@ -76,10 +90,11 @@ def sanitize_sql(
 ) -> Any:
     """Execute a SQL statement using parameterized queries.
 
-    This function previously attempted to sanitize SQL strings with regular
-    expressions which provided limited protection against injection attacks.
-    The new implementation delegates execution to ``execute_sql_with_timeout``
-    which supports parameterized queries.
+    Earlier versions sanitized SQL via regular expressions which provided only
+    limited protection.  ``sanitize_sql`` now delegates to
+    ``execute_sql_with_timeout`` which enforces parameterization.  See the
+    ``Security Considerations`` section in ``README.md`` for additional
+    guidance.
     """
 
     if sql_text is None:
@@ -88,7 +103,11 @@ def sanitize_sql(
     return execute_sql_with_timeout(conn, sql_text, params=params, timeout=timeout)
 
 def safe_tqdm(iterable: Iterable[T], **kwargs: Any) -> Iterator[T]:
-    """Wrapper for tqdm that falls back to a simple iterator if tqdm fails."""
+    """Wrapper for ``tqdm`` that degrades gracefully if progress bars fail.
+
+    Progress display is optional and can be tuned as described in the
+    ``Performance Tuning`` section of ``README.md``.
+    """
     try:
         # First try with default settings
         for item in tqdm(iterable, **kwargs):
@@ -108,6 +127,8 @@ def validate_sql_identifier(identifier: str) -> str:
     """Validate a string for use as a SQL identifier.
 
     Only allows alphanumeric characters and underscores and must not start with a digit.
+    Validation mirrors the guidelines outlined under ``Security Considerations``
+    in ``README.md``.
 
     Args:
         identifier: The identifier to validate.
