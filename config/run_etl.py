@@ -12,6 +12,7 @@ def _load_config(self):
             "user": "",
             "password": "",
             "csv_dir": "",
+            "log_dir": "",
             "include_empty_tables": False,
             "always_include_tables": []
         }
@@ -38,6 +39,7 @@ def _load_config(self):
             "user": "",
             "password": "",
             "csv_dir": "",
+            "log_dir": "",
             "include_empty_tables": False,
             "always_include_tables": []
         }

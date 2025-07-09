@@ -1,7 +1,5 @@
 """Base class for database import operations."""
-
 from __future__ import annotations
-
 import logging
 import os
 import argparse
@@ -14,9 +12,7 @@ from typing import Any, Optional
 from sqlalchemy.types import Text
 from sqlalchemy.exc import SQLAlchemyError
 import pyodbc
-
 from utils.etl_helpers import SQLExecutionError
-
 from db.connections import get_target_connection
 from utils.etl_helpers import (
     load_sql,
@@ -34,7 +30,8 @@ from etl.core import (
     validate_environment,
     validate_sql_identifier,
 )
-from config import ETLConstants, settings
+from config import ETLConstants
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -796,8 +793,8 @@ class BaseDBImporter:
                 return False
 
             # Get target database name
-            from config import settings, parse_database_name
-            conn_val = settings.mssql_target_conn_str.get_secret_value() if settings.mssql_target_conn_str else None
+            from config.settings import settings, parse_database_name
+            conn_val = settings.mssql_target_conn_str if settings.mssql_target_conn_str else None
             self.db_name = settings.mssql_target_db_name or parse_database_name(conn_val)
 
             # Begin database operations

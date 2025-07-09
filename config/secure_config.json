@@ -5,6 +5,7 @@
   "user": "dcMaster",
   "password": "Eepheng1WiephohCoK",
   "ej_csv_dir": "C:\\Users\\jeff.reichert\\OneDrive - Tyler Technologies, Inc\\Documents\\GitHub\\tx_elpaso_7373\\Pre-DMS",
+  "ej_log_dir": "C:\\LargeFileHolder\\7373\\EJ_ImporterLogs\\",
   "include_empty_tables": false,
   "always_include_tables": [
     "Justice.dbo.xPartyGrpParty",
