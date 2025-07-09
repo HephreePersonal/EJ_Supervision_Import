@@ -165,7 +165,7 @@ ej-supervision-import/
 
 ### Configuration File
 
-Create `config/values.json` for persistent settings:
+Create `config/secure_config.json` for persistent settings:
 
 ```json
 {

@@ -14,7 +14,7 @@ This document describes the enhanced secure version of the ETL system for migrat
 
 ### 2. Secure Configuration Management
 - **Encrypted Secrets**: Database passwords and connection strings are stored in the system keyring using `keyring` library
-- **No Plaintext Passwords**: The legacy `config/values.json` no longer contains passwords
+- **No Plaintext Passwords**: The legacy `config/secure_config.json` no longer contains passwords
 - **Environment Variable Support**: Sensitive configuration can be provided via environment variables
 - **Validation**: All configuration values are validated using Pydantic models
 

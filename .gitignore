@@ -363,5 +363,6 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 /.env
+/config/secure_config.json
 /config/values.json
 /config/poopoo.json

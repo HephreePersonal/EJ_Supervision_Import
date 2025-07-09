@@ -144,9 +144,9 @@ class ETLSystemMigration:
         issues = []
         
         # Check for legacy config file
-        legacy_config_path = Path("config/values.json")
+        legacy_config_path = Path("config/secure_config.json")
         if not legacy_config_path.exists():
-            issues.append("Legacy config file config/values.json not found")
+            issues.append("Legacy config file config/secure_config.json not found")
         else:
             try:
                 with open(legacy_config_path) as f:
@@ -226,7 +226,7 @@ class ETLSystemMigration:
         logger.info("Migrating configuration to secure format...")
         
         try:
-            legacy_config_path = Path("config/values.json")
+            legacy_config_path = Path("config/secure_config.json")
             
             if legacy_config_path.exists():
                 # Use the configuration manager's migration function
@@ -268,7 +268,7 @@ class ETLSystemMigration:
                 "# MSSQL_TARGET_CONN_STR will be loaded from keyring": "",
                 "": "",
                 "# File paths": "",
-                "EJ_CSV_DIR": str(Path("config/values.json").parent.parent / "csv_data"),
+                "EJ_CSV_DIR": str(Path("config/secure_config.json").parent.parent / "csv_data"),
                 "EJ_LOG_DIR": str(Path("logs")),
                 "": "",
                 "# Performance settings": "",
@@ -423,7 +423,7 @@ class ETLSystemMigration:
         logger.info("1. Test the new secure system with: python 01_JusticeDB_Import_Secure.py --verbose")
         logger.info("2. Review the migration log: migration.log")
         logger.info("3. Update any automation scripts to use the new secure versions")
-        logger.info("4. Remove legacy config after verification: config/values.json")
+        logger.info("4. Remove legacy config after verification: config/secure_config.json")
         logger.info(f"5. Keep backup for reference: {self.backup_dir}")
         logger.info("\nRefer to the updated documentation for new features and security improvements.")
 

@@ -15,7 +15,8 @@ from tkinter import messagebox
 import pyodbc
 from db.connections import get_target_connection
 from utils.logging_helper import setup_logging, operation_counts
-from config import settings, parse_database_name, ETLConstants
+from config.settings import settings, parse_database_name
+from config import ETLConstants
 
 from utils.etl_helpers import (
     log_exception_to_file,
@@ -31,7 +32,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_LOG_FILE = "PreDMSErrorLog_LOBS.txt"
 
 # Database name used within the dynamic SQL statements
-conn_val = settings.mssql_target_conn_str.get_secret_value() if settings.mssql_target_conn_str else None
+conn_val = settings.mssql_target_conn_str if settings.mssql_target_conn_str else None
 DB_NAME = settings.mssql_target_db_name or parse_database_name(conn_val)
 
 def parse_args() -> argparse.Namespace:
@@ -51,7 +52,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config-file",
-        default="config/values.json",
+        default="config/secure_config.json",
         help="Path to JSON configuration file with all settings."
     )
     parser.add_argument(
@@ -229,7 +230,7 @@ def gather_lob_columns(
             datatype = row_dict.get("DataType")
             row_cnt = row_dict.get("RowCnt") or 0
             
-            overrides = {t.lower() for t in config.get("always_include_tables", [])}
+            overrides = {t.lower() for t in settings.always_include_tables}
             full_name = f"{schema_name}.{table_name}".lower()
             if (
                 not config["include_empty_tables"]

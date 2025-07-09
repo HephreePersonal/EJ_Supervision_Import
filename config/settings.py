@@ -120,9 +120,6 @@ def save_settings(settings_obj: Settings) -> None:
     
     save_config_to_file(config_data)
 
-# Create settings instance
-settings = get_settings()
-
 # For backward compatibility
 def get_secure_settings() -> Settings:
     """Alias for get_settings."""
@@ -135,3 +132,6 @@ ConfigurationManager = None
 def migrate_existing_configuration():
     """No-op for backward compatibility."""
     pass
+
+# Create settings instance
+settings = get_settings()

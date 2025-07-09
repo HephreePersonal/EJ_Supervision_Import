@@ -274,7 +274,7 @@ get_secure_settings = get_settings
 def migrate_existing_configuration() -> None:
     """Migrate legacy plaintext configuration to the secure format."""
     config_manager = ConfigurationManager()
-    legacy_config_path = Path("config/values.json")
+    legacy_config_path = Path("config/secure_config.json")
     if legacy_config_path.exists():
         print("Found legacy configuration file. Migrating to secure storage...")
         config_manager.migrate_legacy_config(legacy_config_path)

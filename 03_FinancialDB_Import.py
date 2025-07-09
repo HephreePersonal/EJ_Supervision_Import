@@ -25,7 +25,7 @@ from tqdm import tqdm
 from sqlalchemy.types import Text
 import tkinter as tk
 from tkinter import N, messagebox
-from config import settings, parse_database_name
+from config.settings import settings, parse_database_name
 
 from utils.etl_helpers import (
     log_exception_to_file,
@@ -42,7 +42,7 @@ DEFAULT_LOG_FILE = "PreDMSErrorLog_Financial.txt"
 # Determine the target database name from environment variables/connection
 # string. This value replaces the ``{{DB_NAME}}`` placeholder in the SQL
 # scripts so the ETL can run against any target database.
-conn_val = settings.mssql_target_conn_str.get_secret_value() if settings.mssql_target_conn_str else None
+conn_val = settings.mssql_target_conn_str if settings.mssql_target_conn_str else None
 DB_NAME = settings.mssql_target_db_name or parse_database_name(conn_val)
 
 class FinancialDBImporter(BaseDBImporter):
@@ -83,7 +83,7 @@ class FinancialDBImporter(BaseDBImporter):
         )
         parser.add_argument(
             "--config-file",
-            default="config/values.json",
+            default="config/secure_config.json",
             help="Path to JSON configuration file with all settings."
         )
         parser.add_argument(

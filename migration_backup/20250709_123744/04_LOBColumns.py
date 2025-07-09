@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--config-file",
-        default="config/values.json",
+        default="config/secure_config.json",
         help="Path to JSON configuration file with all settings."
     )
     parser.add_argument(

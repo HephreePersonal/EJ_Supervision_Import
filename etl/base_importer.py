@@ -65,7 +65,7 @@ class BaseDBImporter:
         parser = argparse.ArgumentParser(description=f"{self.DB_TYPE} database import operations")
         # Add other arguments...
         parser.add_argument("--config", dest="config_file",
-                           default="config/values.json",  # Set default config path
+                           default="config/secure_config.json",  # Set default config path
                            help="Path to configuration file")
         parser.add_argument(
             "--extra-validation",

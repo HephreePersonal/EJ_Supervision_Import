@@ -7,7 +7,7 @@ from typing import Optional
 
 import pyodbc
 
-from config import settings
+from config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +31,6 @@ def check_connection(conn_str: str, timeout: int = 5) -> bool:
 def check_target_connection(timeout: int = 5) -> bool:
     """Check connectivity to the configured target database."""
     conn = settings.mssql_target_conn_str
-    conn_str = conn.get_secret_value() if conn else ""
+    conn_str = conn if conn else ""
     return check_connection(conn_str, timeout)
 

@@ -255,7 +255,7 @@ def get_secure_settings() -> SecureETLSettings:
 def migrate_existing_configuration():
     """Utility function to migrate existing configuration."""
     config_manager = ConfigurationManager()
-    legacy_config_path = Path("config/values.json")
+    legacy_config_path = Path("config/secure_config.json")
     
     if legacy_config_path.exists():
         print("Found legacy configuration file. Migrating to secure storage...")
